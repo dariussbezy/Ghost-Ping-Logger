@@ -13,6 +13,7 @@
   const MAX_RECENT_MESSAGES = 5000;
   const MAX_SNIPPET = 300;
   const BUILD = "v1.0.0";
+  const GPL_ALERT_BRIDGE_KEY = "__ghost_ping_logger_aml_bridge_v1__";
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
@@ -34,6 +35,7 @@
   let appStateSub = null;
   let renderUnpatch = null;
   let lastSettingsNavigation = null;
+  const alertedPings = new Set();
 
   const cfg = () => plugin.storage;
   const toast = (t) => { try { ui.toasts.showToast(t); } catch (_) {} };
@@ -55,12 +57,6 @@
     try {
       const bridge = globalThis[AML_BRIDGE_KEY];
       return !!(bridge && bridge.active && typeof bridge.ownsEditedMessage === "function" && bridge.ownsEditedMessage(id));
-    } catch (_) { return false; }
-  }
-  function amlNotifiesDMDelete(channelId) {
-    try {
-      const bridge = globalThis[AML_BRIDGE_KEY];
-      return !!(bridge && bridge.active && typeof bridge.notifiesDMDelete === "function" && bridge.notifiesDMDelete(channelId));
     } catch (_) { return false; }
   }
   function amlNotifiesDMEdit(channelId) {
@@ -297,20 +293,35 @@
     pings.unshift(entry);
     if (pings.length > MAX_PINGS) pings.length = MAX_PINGS;
     save();
-    if (cfg().showToast && !(entry.k === "dm" && amlNotifiesDMDelete(entry.c))) showPingAlert(entry);
+    if (cfg().showToast) {
+      alertedPings.add(String(entry.id));
+      while (alertedPings.size > MAX_PINGS) alertedPings.delete(alertedPings.values().next().value);
+      showPingAlert(entry);
+    }
     return entry;
   }
 
-  function check(msg, channelId, guildId) {
+  function pingKindFor(msg, channelId) {
     const s = cfg();
-    if (!s.enabled) return;
+    if (!s.enabled) return null;
     const me = myId();
-    if (!me || !msg.author || msg.author.id === me) return;
-    if (s.skipBots && msg.author.bot) return;
+    if (!me || !msg || !msg.author || msg.author.id === me) return null;
+    if (s.skipBots && msg.author.bot) return null;
     let kind = null;
     if (s.pingDMs && isDM(getChannel(channelId))) kind = "dm";
     if (!kind && s.pingReplies && isReplyToMe(msg, channelId, me)) kind = "reply";
     if (!kind && s.pingMentions && mentionsMe(msg, me)) kind = "mention";
+    return kind;
+  }
+
+  function willShowDeleteAlert(msg, channelId, guildId, id) {
+    if (!cfg().showToast) return false;
+    if (id != null && alertedPings.has(String(id))) return true;
+    return !!pingKindFor(msg, channelId);
+  }
+
+  function check(msg, channelId, guildId) {
+    const kind = pingKindFor(msg, channelId);
     if (!kind) return null;
     const existing = pings.find((p) => String(p.id) === String(msg.id));
     if (existing) return existing;
@@ -846,6 +857,12 @@
     try { unpatches.push(patcher.before("dispatch", FluxDispatcher, hookDispatch)); } catch (_) { return; }
     try { renderUnpatch = patchRender(); } catch (_) {}
     try {
+      globalThis[GPL_ALERT_BRIDGE_KEY] = {
+        active: true,
+        willShowDeleteAlert,
+      };
+    } catch (_) {}
+    try {
       appStateSub = RN.AppState.addEventListener("change", (state) => { if (state === "active" && purge()) save(); });
     } catch (_) {}
   }
@@ -855,6 +872,11 @@
     if (renderUnpatch) { try { renderUnpatch(); } catch (_) {} renderUnpatch = null; }
     if (appStateSub && appStateSub.remove) { try { appStateSub.remove(); } catch (_) {} }
     appStateSub = null;
+    try {
+      const bridge = globalThis[GPL_ALERT_BRIDGE_KEY];
+      if (bridge && bridge.willShowDeleteAlert === willShowDeleteAlert) delete globalThis[GPL_ALERT_BRIDGE_KEY];
+    } catch (_) {}
+    alertedPings.clear();
     lastSettingsNavigation = null;
     recentMessages.clear();
     retainedPings.clear();
