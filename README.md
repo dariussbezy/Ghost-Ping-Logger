@@ -31,3 +31,10 @@ Please report any discrepancies, bugs, crashes, or suggestions in the project's 
 
 ## Recommended for use with the Advanced Message Logger plugin.
 https://github.com/dariussbezy/Advanced-Message-Logger/
+
+## Screenshots:
+
+<img width="1179" height="535" alt="image" src="https://github.com/user-attachments/assets/19aaf7b3-3ba0-4c4e-9716-2fa5a9e27bef" />
+<img width="1179" height="2411" alt="image" src="https://github.com/user-attachments/assets/fd565736-1466-4812-9c95-036198e50c09" />
+<img width="1179" height="2394" alt="image" src="https://github.com/user-attachments/assets/7f0223a5-ccad-46dd-99d3-2b7cc179c650" />
+
