@@ -602,18 +602,33 @@
                 toast("Could not find Kettu's message navigation action");
                 return;
               }
-              const jumpWhenChannelIsReady = (attemptsLeft) => {
-                if (String(currentChannelId() || "") !== String(channelId) && attemptsLeft > 0) {
-                  return setTimeout(() => jumpWhenChannelIsReady(attemptsLeft - 1), 120);
-                }
+              const performMessageJump = () => {
                 try {
                   actions.jumpToMessage({ channelId, messageId: real, flash: true, jumpType: "INSTANT" });
+                  return true;
                 } catch (_) {
-                  try { actions.jumpToMessage(channelId, real, true); }
-                  catch (_) { toast("Kettu could not jump to that message"); }
+                  try { actions.jumpToMessage(channelId, real, true); return true; }
+                  catch (_) { toast("Kettu could not jump to that message"); return false; }
                 }
               };
-              jumpWhenChannelIsReady(25);
+              const jumpWhenMessageIsReady = (attemptsLeft) => {
+                if (getMessage(channelId, real)) {
+                  // The first jump requests older history; repeat after the
+                  // target enters MessageStore so the list can scroll to it.
+                  return setTimeout(performMessageJump, 180);
+                }
+                if (attemptsLeft > 0) return setTimeout(() => jumpWhenMessageIsReady(attemptsLeft - 1), 150);
+                toast("The message did not load yet. Open the channel and try Jump to message again.");
+              };
+              const jumpWhenChannelIsReady = (attemptsLeft) => {
+                if (String(currentChannelId() || "") !== String(channelId)) {
+                  if (attemptsLeft > 0) return setTimeout(() => jumpWhenChannelIsReady(attemptsLeft - 1), 160);
+                  toast("The channel did not open in time. Try Jump to message again.");
+                  return;
+                }
+                if (performMessageJump()) jumpWhenMessageIsReady(80);
+              };
+              jumpWhenChannelIsReady(75);
           }, 220);
           }, 160);
         }, 250);
