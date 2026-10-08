@@ -1,0 +1,7 @@
+{
+  "name": "Ghost Ping Logger",
+  "description": "Show an in-app alert and keep a history when someone deletes a message that mentioned you, replied to you, or was sent in your DMs.",
+  "authors": [{ "name": "dariussbezy" }],
+  "main": "index.js",
+  "hash": "3a76aba0c04c0f365bc1eed195cbbc1c5a950f5480241dc33b21b03a619fecc8"
+}
