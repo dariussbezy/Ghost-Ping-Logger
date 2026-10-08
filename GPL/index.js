@@ -10,7 +10,7 @@
   const DEFAULT_NOTIFICATION_SECONDS = 15;
   const MIN_NOTIFICATION_SECONDS = 3;
   const MAX_NOTIFICATION_SECONDS = 120;
-  const BUILD = "v1.1";
+  const BUILD = "v1.2";
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
@@ -109,17 +109,40 @@
       closePingAlert();
       if (!isTest) setTimeout(() => jumpTo(entry.c, entry.g, entry.id, lastSettingsNavigation), 180);
     };
-    const Alert = ui.components && ui.components.Alert;
-    if (!Alert) return null;
     const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
-    return React.createElement(Alert, {
-      title: "Ghost Ping Logger",
-      confirmText: isTest ? "Close" : "Jump to message",
-      onConfirm: isTest ? close : jump,
-      cancelText: isTest ? undefined : "Dismiss",
-      onCancel: close,
-    }, React.createElement(RN.Text, { style: { color: "#B5BAC1", fontSize: 15 } },
-      "Ghost ping: " + entry.an + " " + what + "\n\n" + (entry.t || "(no message text)") + "\n\nThis alert closes in " + seconds + " seconds."));
+    const colors = palette();
+    const button = (label, onPress, primary) => React.createElement(RN.Pressable, {
+      key: label,
+      onPress,
+      accessibilityRole: "button",
+      style: {
+        minHeight: 46,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: primary ? 10 : 0,
+        backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)",
+      },
+    }, React.createElement(RN.Text, { style: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" } }, label));
+    return React.createElement(RN.View, {
+      style: {
+        width: "100%",
+        maxWidth: 440,
+        alignSelf: "center",
+        padding: 20,
+        borderRadius: 14,
+        backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF",
+      },
+    },
+      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 12 } }, "Ghost Ping Logger"),
+      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 15, lineHeight: 21 } },
+        "Ghost ping: " + entry.an + " " + what + "\n\n" + (entry.t || "(no message text)")),
+      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 13, marginTop: 14, marginBottom: 18 } },
+        "This alert closes in " + seconds + " seconds."),
+      React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end" } },
+        !isTest ? button("Dismiss", close, false) : null,
+        button(isTest ? "Close" : "Jump to message", isTest ? close : jump, true)));
   }
 
   function showPingAlert(entry) {
