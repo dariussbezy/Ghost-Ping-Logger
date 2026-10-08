@@ -1,6 +1,6 @@
 {
   "name": "Ghost Ping Logger",
-  "description": "Ghost Ping Logger v1.0.0 retains ghost ping messages for jump navigation, displays edited message history, and integrates with Advanced Message Logger.",
+  "description": "A very stable plugin that retains ghost ping messages for jump navigation, displays edited message history, integrates with Advanced Message Logger and much more! Check the plugin settings",
   "authors": [
     {
       "name": "dariussbezy"
