@@ -6,11 +6,10 @@
   const { FluxDispatcher, React, ReactNative: RN } = metro.common;
 
   const MAX_PINGS = 200;
-  const MAX_RECENT_MESSAGES = 1000;
+  const DEFAULT_RECENT_MESSAGES = 1000;
+  const MIN_RECENT_MESSAGES = 100;
+  const MAX_RECENT_MESSAGES = 5000;
   const MAX_SNIPPET = 300;
-  const DEFAULT_NOTIFICATION_SECONDS = 15;
-  const MIN_NOTIFICATION_SECONDS = 3;
-  const MAX_NOTIFICATION_SECONDS = 120;
   const BUILD = "v1.5";
   const PAGE = 40;
   const DAY = 86400000;
@@ -54,7 +53,7 @@
 
   const getMessage = (c, id) => { try { return MessageStore.getMessage(c, id) || null; } catch (_) { return null; } };
   function rememberMessage(message) {
-    if (!message || !message.id) return;
+    if (cfg().captureMode !== "expanded" || !message || !message.id) return;
     const channelId = message.channel_id || message.channelId;
     if (!channelId) return;
     const previous = recentMessages.get(message.id);
@@ -83,11 +82,17 @@
     };
     recentMessages.delete(snapshot.id);
     recentMessages.set(snapshot.id, snapshot);
-    while (recentMessages.size > MAX_RECENT_MESSAGES) recentMessages.delete(recentMessages.keys().next().value);
+    while (recentMessages.size > recentMessageLimit()) recentMessages.delete(recentMessages.keys().next().value);
+  }
+  function recentMessageLimit() {
+    const value = Number(cfg().maxCachedMessages);
+    if (!Number.isFinite(value)) return DEFAULT_RECENT_MESSAGES;
+    return Math.max(MIN_RECENT_MESSAGES, Math.min(MAX_RECENT_MESSAGES, Math.round(value)));
   }
   function getKnownMessage(channelId, id) {
     const cached = getMessage(channelId, id);
     if (cached) return cached;
+    if (cfg().captureMode !== "expanded") return null;
     const recent = recentMessages.get(String(id));
     return recent && String(recent.channel_id) === String(channelId) ? recent : null;
   }
@@ -122,12 +127,6 @@
     try { cfg().pings = pings.slice(); } catch (_) {}
   }
 
-  function notificationSeconds() {
-    const value = Number(cfg().notificationDuration);
-    if (!Number.isFinite(value)) return DEFAULT_NOTIFICATION_SECONDS;
-    return Math.max(MIN_NOTIFICATION_SECONDS, Math.min(MAX_NOTIFICATION_SECONDS, Math.round(value)));
-  }
-
   function closePingAlert() {
     try {
       const alerts = findByProps("openLazy", "close");
@@ -135,75 +134,44 @@
     } catch (_) {}
   }
 
-  function NotificationDurationModal(props) {
-    const [value, setValue] = React.useState(String(props.initialValue || DEFAULT_NOTIFICATION_SECONDS));
+  function closeSettingsAlert() {
+    try {
+      const alerts = findByProps("openLazy", "close");
+      if (alerts && typeof alerts.close === "function") alerts.close();
+    } catch (_) {}
+  }
+
+  function MessageCacheLimitModal(props) {
+    const [value, setValue] = React.useState(String(props.initialValue || DEFAULT_RECENT_MESSAGES));
     const [error, setError] = React.useState("");
     const colors = palette();
-    const close = () => closePingAlert();
-    const save = () => {
-      const seconds = Number(String(value).trim());
-      if (!Number.isInteger(seconds) || seconds < MIN_NOTIFICATION_SECONDS || seconds > MAX_NOTIFICATION_SECONDS) {
-        setError("Enter a whole number from " + MIN_NOTIFICATION_SECONDS + " to " + MAX_NOTIFICATION_SECONDS + ".");
-        return;
-      }
-      closePingAlert();
-      if (typeof props.onSave === "function") props.onSave(seconds);
-    };
     const action = (label, onPress, primary) => React.createElement(RN.Pressable, {
       key: label,
       onPress,
       accessibilityRole: "button",
-      style: {
-        minHeight: 44,
-        paddingHorizontal: 16,
-        borderRadius: 8,
-        marginLeft: primary ? 10 : 0,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)",
-      },
+      style: { minHeight: 44, paddingHorizontal: 16, borderRadius: 8, marginLeft: primary ? 10 : 0, alignItems: "center", justifyContent: "center", backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)" },
     }, React.createElement(RN.Text, { style: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" } }, label));
-    return React.createElement(RN.View, {
-      style: {
-        width: "100%",
-        maxWidth: 440,
-        alignSelf: "center",
-        padding: 20,
-        borderRadius: 14,
-        backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF",
-      },
-    },
-      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Alert duration"),
-      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "Choose 3–120 seconds before the alert closes automatically."),
-      React.createElement(RN.TextInput, {
-        value,
-        onChangeText: (next) => { setValue(next); setError(""); },
-        keyboardType: "number-pad",
-        placeholder: String(DEFAULT_NOTIFICATION_SECONDS),
-        accessibilityLabel: "Alert duration in seconds",
-        style: {
-          minHeight: 48,
-          paddingHorizontal: 12,
-          borderRadius: 8,
-          color: colors.text,
-          fontSize: 17,
-          backgroundColor: "rgba(128,128,128,0.16)",
-        },
-      }),
+    const save = () => {
+      const count = Number(String(value).trim());
+      if (!Number.isInteger(count) || count < MIN_RECENT_MESSAGES || count > MAX_RECENT_MESSAGES) {
+        setError("Enter a whole number from " + MIN_RECENT_MESSAGES + " to " + MAX_RECENT_MESSAGES + ".");
+        return;
+      }
+      closeSettingsAlert();
+      if (typeof props.onSave === "function") props.onSave(count);
+    };
+    return React.createElement(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 20, borderRadius: 14, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
+      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Maximum cached messages"),
+      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "Expanded Cache only. Higher values use more memory. Incoming messages only; no history is fetched."),
+      React.createElement(RN.TextInput, { value, onChangeText: (next) => { setValue(next); setError(""); }, keyboardType: "number-pad", accessibilityLabel: "Maximum cached messages", style: { minHeight: 48, paddingHorizontal: 12, borderRadius: 8, color: colors.text, fontSize: 17, backgroundColor: "rgba(128,128,128,0.16)" } }),
       error ? React.createElement(RN.Text, { style: { color: RED, fontSize: 13, marginTop: 8 } }, error) : null,
       React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end", marginTop: 18 } },
-        action("Cancel", close, false), action("Save", save, true)));
+        action("Cancel", closeSettingsAlert, false), action("Save", save, true)));
   }
 
   function GhostPingAlert(props) {
     const entry = props.entry;
-    const seconds = props.seconds;
     const isTest = String(entry.id).startsWith("test-");
-    React.useEffect(() => {
-      const timer = setTimeout(closePingAlert, seconds * 1000);
-      return () => clearTimeout(timer);
-    }, [entry.id, seconds]);
-
     const close = () => closePingAlert();
     const jump = () => {
       closePingAlert();
@@ -238,18 +206,15 @@
       React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 12 } }, "Ghost Ping Logger"),
       React.createElement(RN.Text, { style: { color: colors.text, fontSize: 15, lineHeight: 21 } },
         "Ghost ping: " + entry.an + " " + what + "\n\n" + (entry.t || "(no message text)")),
-      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 13, marginTop: 14, marginBottom: 18 } },
-        "This alert closes in " + seconds + " seconds."),
       React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end" } },
         !isTest ? button("Dismiss", close, false) : null,
         button(isTest ? "Close" : "Jump to message", isTest ? close : jump, true)));
   }
 
   function showPingAlert(entry) {
-    const seconds = notificationSeconds();
     try {
       if (ui.alerts && typeof ui.alerts.showCustomAlert === "function") {
-        ui.alerts.showCustomAlert(GhostPingAlert, { entry, seconds });
+        ui.alerts.showCustomAlert(GhostPingAlert, { entry });
         return;
       }
     } catch (_) {}
@@ -535,23 +500,34 @@
       h(RN.View, { key, style: { paddingHorizontal: 16, paddingVertical: 6 } }, h(RN.Button, { title, onPress, color }));
 
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
+    const captureModeLabel = () => cfg().captureMode === "expanded" ? "Expanded Cache" : "Loaded Only";
+    const captureModeDescription = () => cfg().captureMode === "expanded"
+      ? "Higher memory use; retain incoming messages from channels you have not opened"
+      : "Lowest resource use; check only messages already loaded by Discord";
+    const cycleCaptureMode = () => {
+      cfg().captureMode = cfg().captureMode === "expanded" ? "loaded" : "expanded";
+      if (cfg().captureMode === "loaded") recentMessages.clear();
+      refreshUI();
+    };
+    const editRecentMessageLimit = () => {
+      try {
+        ui.alerts.showCustomAlert(MessageCacheLimitModal, {
+          initialValue: recentMessageLimit(),
+          onSave: (count) => {
+            cfg().maxCachedMessages = count;
+            while (recentMessages.size > count) recentMessages.delete(recentMessages.keys().next().value);
+            refreshUI();
+          },
+        });
+      } catch (_) { toast("Could not open cache limit settings"); }
+    };
     const cycleRetention = () => {
       const cur = cfg().retentionDays || 0;
       cfg().retentionDays = cur === 0 ? 7 : cur === 7 ? 30 : 0;
       if (purge()) save();
       refreshUI();
     };
-    const editNotificationDuration = () => {
-      try {
-        ui.alerts.showCustomAlert(NotificationDurationModal, {
-          initialValue: notificationSeconds(),
-          onSave: (seconds) => {
-            cfg().notificationDuration = seconds;
-            refreshUI();
-          },
-        });
-      } catch (_) { toast("Could not open alert duration settings"); }
-    };
+
 
     let content;
     if (screen === "history") {
@@ -599,7 +575,9 @@
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
-        PressRow("duration", "Alert duration", "Automatically dismiss the alert after this many seconds", editNotificationDuration, notificationSeconds() + " sec"),
+        Section("Message capture"),
+        PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
+        PressRow("cache-limit", "Maximum cached messages", "Expanded Cache only · held in memory", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
         PressRow("retention", "Keep history for", "Older entries are removed automatically", cycleRetention, retentionLabel()),
@@ -613,8 +591,9 @@
 
   function onLoad() {
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, notificationDuration: DEFAULT_NOTIFICATION_SECONDS, retentionDays: 0 };
+    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
+    if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
     if (!loadStores()) { toast("Ghost Ping Logger: required Discord modules not found"); return; }
     recentMessages.clear();
