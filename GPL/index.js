@@ -332,7 +332,7 @@
     editHistory.delete(String(message.id));
     editHistory.set(String(message.id), record);
     while (editHistory.size > MAX_EDITED) editHistory.delete(editHistory.keys().next().value);
-    if (cfg().notifyEdited && !amlNotifiesDMEdit(record.c)) toast("Edited message from " + record.an + ": " + clip(record.current, 80));
+    if (cfg().notifyEdited && isDM(getChannel(record.c)) && !amlNotifiesDMEdit(record.c)) toast("Edited message from " + record.an + ": " + clip(record.current, 80));
   }
 
   function handle(channelId, guildId, ids, retainForFallback) {
@@ -798,7 +798,7 @@
         Section("Alerts"),
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
         Switch("logEdited", "Track edited messages", "Keep recent previous versions while this plugin is active"),
-        Switch("notifyEdited", "Notify about edits", "Show a toast when an edit is captured"),
+        Switch("notifyEdited", "Notify about edits", "Show a toast for edited messages in DMs only"),
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
         PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
