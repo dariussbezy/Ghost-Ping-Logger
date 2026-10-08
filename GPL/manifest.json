@@ -1,11 +1,11 @@
 {
   "name": "Ghost Ping Logger",
-  "description": "Detect deleted mentions, replies, and DM messages with a configurable in-app alert, jump action, and local history.",
+  "description": "Ghost Ping Logger v1.0.0 retains ghost ping messages for jump navigation, displays edited message history, and integrates with Advanced Message Logger.",
   "authors": [
     {
       "name": "dariussbezy"
     }
   ],
   "main": "index.js",
-  "hash": "a49a805a8b72ecc33a10c426506e5a5dc1badd648813f81d92521d079ca5f4f9"
+  "hash": "8280cb49dc921834fc183075f1e6cb10d07c046c513d383670567759b1bdd11f"
 }
