@@ -26,8 +26,8 @@ https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/main/GPL/
 
 ## Compatibility
 
-Built for Kettu. Behavior may vary across operating systems and Kettu or Discord versions. 
-Please report any discrepancies, bugs, crashes, or suggestions in the project's feedback channel.
+The existing project notes report testing on iOS 27 with Kettu 1.4.3 and Discord 305.1. Android and other client versions may behave differently.
+Please report bugs, crashes, and suggestions in the project's feedback channel.
 
 ## Recommended for use with the Advanced Message Logger plugin.
 https://github.com/dariussbezy/Advanced-Message-Logger/
