@@ -7,12 +7,14 @@
 
   const MAX_PINGS = 200;
   const MAX_SNIPPET = 300;
-  const BUILD = "v1";
+  const DEFAULT_NOTIFICATION_SECONDS = 15;
+  const MIN_NOTIFICATION_SECONDS = 3;
+  const MAX_NOTIFICATION_SECONDS = 120;
+  const BUILD = "v1.1";
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
   const KINDS = { dm: "DM", reply: "Reply", mention: "Mention" };
-  const JUMP_METHODS = ["App link", "Jump action (experimental)", "System link"];
 
   const unpatches = [];
   let pings = [];
@@ -22,6 +24,7 @@
   let SelectedChannelStore;
   let ThemeStore;
   let appStateSub = null;
+  let lastSettingsNavigation = null;
 
   const cfg = () => plugin.storage;
   const toast = (t) => { try { ui.toasts.showToast(t); } catch (_) {} };
@@ -79,6 +82,58 @@
     try { cfg().pings = pings.slice(); } catch (_) {}
   }
 
+  function notificationSeconds() {
+    const value = Number(cfg().notificationDuration);
+    if (!Number.isFinite(value)) return DEFAULT_NOTIFICATION_SECONDS;
+    return Math.max(MIN_NOTIFICATION_SECONDS, Math.min(MAX_NOTIFICATION_SECONDS, Math.round(value)));
+  }
+
+  function closePingAlert() {
+    try {
+      const alerts = findByProps("openLazy", "close");
+      if (alerts && typeof alerts.close === "function") alerts.close();
+    } catch (_) {}
+  }
+
+  function GhostPingAlert(props) {
+    const entry = props.entry;
+    const seconds = props.seconds;
+    const isTest = String(entry.id).startsWith("test-");
+    React.useEffect(() => {
+      const timer = setTimeout(closePingAlert, seconds * 1000);
+      return () => clearTimeout(timer);
+    }, [entry.id, seconds]);
+
+    const close = () => closePingAlert();
+    const jump = () => {
+      closePingAlert();
+      if (!isTest) setTimeout(() => jumpTo(entry.c, entry.g, entry.id, lastSettingsNavigation), 180);
+    };
+    const Alert = ui.components && ui.components.Alert;
+    if (!Alert) return null;
+    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
+    return React.createElement(Alert, {
+      title: "Ghost Ping Logger",
+      confirmText: isTest ? "Close" : "Jump to message",
+      onConfirm: isTest ? close : jump,
+      cancelText: isTest ? undefined : "Dismiss",
+      onCancel: close,
+    }, React.createElement(RN.Text, { style: { color: "#B5BAC1", fontSize: 15 } },
+      "Ghost ping: " + entry.an + " " + what + "\n\n" + (entry.t || "(no message text)") + "\n\nThis alert closes in " + seconds + " seconds."));
+  }
+
+  function showPingAlert(entry) {
+    const seconds = notificationSeconds();
+    try {
+      if (ui.alerts && typeof ui.alerts.showCustomAlert === "function") {
+        ui.alerts.showCustomAlert(GhostPingAlert, { entry, seconds });
+        return;
+      }
+    } catch (_) {}
+    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
+    toast("Ghost ping: " + entry.an + " " + what);
+  }
+
   function purge() {
     const days = cfg().retentionDays;
     if (!days) return false;
@@ -115,10 +170,7 @@
     pings.unshift(entry);
     if (pings.length > MAX_PINGS) pings.length = MAX_PINGS;
     save();
-    if (cfg().showToast) {
-      const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
-      toast("Ghost ping: " + entry.an + " " + what);
-    }
+    if (cfg().showToast) showPingAlert(entry);
   }
 
   function check(msg, channelId, guildId) {
@@ -171,7 +223,7 @@
     pings.unshift(entry);
     if (pings.length > MAX_PINGS) pings.length = MAX_PINGS;
     save();
-    toast("Ghost ping: " + entry.an + " deleted a message that mentioned you");
+    showPingAlert(entry);
   }
 
   function removePing(id) {
@@ -179,35 +231,122 @@
     save();
   }
 
-  function jumpApp(channelId, guildId, messageId, link) {
-    const u = metro.common.url || findByProps("openURL", "openDeeplink");
-    if (u && typeof u.openURL === "function") { u.openURL(link); return true; }
-    return false;
-  }
-
-  function jumpAction(channelId, guildId, messageId) {
-    const actions = findByProps("jumpToMessage");
-    if (!actions || typeof actions.jumpToMessage !== "function") return false;
-    try { FluxDispatcher.dispatch({ type: "CHANNEL_SELECT", guildId: guildId || null, channelId }); } catch (_) {}
-    if (messageId) actions.jumpToMessage({ channelId, messageId, flash: true, jumpType: "ANIMATED" });
-    return true;
-  }
-
-  function jumpSystem(channelId, guildId, messageId, link) {
-    const u = metro.common.url || findByProps("openDeeplink");
-    if (u && typeof u.openDeeplink === "function") { u.openDeeplink(link); return true; }
-    RN.Linking.openURL(link);
-    return true;
-  }
-
-  function jumpTo(channelId, guildId, messageId) {
+  function jumpTo(channelId, guildId, messageId, navigation) {
     const real = messageId && !String(messageId).startsWith("test-") ? messageId : null;
-    const link = "https://discord.com/channels/" + (guildId || "@me") + "/" + channelId + (real ? "/" + real : "");
-    const method = cfg().jumpMethod || 1;
-    const order = method === 2 ? [jumpAction, jumpApp, jumpSystem] : method === 3 ? [jumpSystem, jumpApp] : [jumpApp, jumpAction, jumpSystem];
-    for (const fn of order) {
-      try { if (fn(channelId, guildId, real, link)) return; } catch (_) {}
-    }
+    const openMessagesTab = () => {
+      let current = navigation;
+      for (let depth = 0; current && depth < 8; depth++) {
+        let state = null;
+        try { state = typeof current.getState === "function" ? current.getState() : null; } catch (_) {}
+        const routes = state && Array.isArray(state.routes) ? state.routes : [];
+        const target = routes.find((route) => /^(home|messages|messagestab|hometab|directmessages)$/i.test(String(route.name || ""))) ||
+          routes.find((route) => /home|messages|direct.?messages/i.test(String(route.name || "")) && !/setting|profile|you/i.test(String(route.name || "")));
+        if (target) {
+          try {
+            if (typeof current.jumpTo === "function") current.jumpTo(target.name);
+            else if (typeof current.navigate === "function") current.navigate(target.name);
+            else return false;
+            return true;
+          } catch (_) {}
+        }
+        try { current = typeof current.getParent === "function" ? current.getParent() : null; }
+        catch (_) { current = null; }
+      }
+      return false;
+    };
+    const dismissProfileRoute = () => {
+      let current = navigation;
+      for (let depth = 0; current && depth < 8; depth++) {
+        let state = null;
+        try { state = typeof current.getState === "function" ? current.getState() : null; } catch (_) {}
+        const routes = state && Array.isArray(state.routes) ? state.routes : [];
+        const active = routes[state && Number.isInteger(state.index) ? state.index : routes.length - 1];
+        const routeName = String(active && active.name || "");
+        if (/user.?profile|profile.?modal/i.test(routeName) && !/you|settings/i.test(routeName)) {
+          try {
+            if (typeof current.goBack === "function" && current.canGoBack()) current.goBack();
+            else if (typeof current.dismiss === "function") current.dismiss();
+            return true;
+          } catch (_) {}
+        }
+        try { current = typeof current.getParent === "function" ? current.getParent() : null; }
+        catch (_) { current = null; }
+      }
+      return false;
+    };
+    const selectAfterClose = () => {
+      setTimeout(() => {
+        // UserProfile is often presented as a modal above the tab navigator.
+        // Closing only the plugin settings route leaves that profile modal
+        // visible, so close the app modal stack before selecting Messages.
+        try {
+          const modalActions = findByProps("closeAllModals");
+          if (modalActions && typeof modalActions.closeAllModals === "function") modalActions.closeAllModals();
+        } catch (_) {}
+        try { FluxDispatcher.dispatch({ type: "USER_PROFILE_MODAL_CLOSE" }); } catch (_) {}
+        try { FluxDispatcher.dispatch({ type: "USER_SETTINGS_MODAL_CLOSE" }); } catch (_) {}
+        setTimeout(() => {
+          dismissProfileRoute();
+          setTimeout(() => {
+            openMessagesTab();
+            setTimeout(() => {
+              // Use the client's channel router so navigation leaves the
+              // profile tab and enters the actual Kettu conversation route.
+              try {
+                const channelRouter = findByProps("transitionToChannel");
+                if (channelRouter && typeof channelRouter.transitionToChannel === "function") {
+                  channelRouter.transitionToChannel(String(channelId));
+                }
+              } catch (_) {}
+              try {
+                const navigationRouter = findByProps("transitionTo");
+                const path = guildId
+                  ? "/channels/" + String(guildId) + "/" + String(channelId)
+                  : "/channels/@me/" + String(channelId);
+                if (navigationRouter && typeof navigationRouter.transitionTo === "function") navigationRouter.transitionTo(path);
+              } catch (_) {}
+              try { FluxDispatcher.dispatch({ type: "CHANNEL_SELECT", guildId: guildId || null, channelId }); } catch (_) {}
+              if (!real) return;
+              const actions = findByProps("jumpToMessage");
+              if (!actions || typeof actions.jumpToMessage !== "function") {
+                toast("Could not find Kettu's message navigation action");
+                return;
+              }
+              const jumpWhenChannelIsReady = (attemptsLeft) => {
+                if (String(currentChannelId() || "") !== String(channelId) && attemptsLeft > 0) {
+                  return setTimeout(() => jumpWhenChannelIsReady(attemptsLeft - 1), 120);
+                }
+                try {
+                  actions.jumpToMessage({ channelId, messageId: real, flash: true, jumpType: "INSTANT" });
+                } catch (_) {
+                  try { actions.jumpToMessage(channelId, real, true); }
+                  catch (_) { toast("Kettu could not jump to that message"); }
+                }
+              };
+              jumpWhenChannelIsReady(25);
+          }, 220);
+          }, 160);
+        }, 250);
+      }, 250);
+    };
+    // The plugin settings are nested above the profile view. Unwind their
+    // routes first; the modal and profile route are closed afterward.
+    const nav = navigation;
+    let depth = 0;
+    const closeOne = () => {
+      if (!nav || depth++ >= 8) return selectAfterClose();
+      let canGoBack = false;
+      try { canGoBack = typeof nav.canGoBack === "function" && nav.canGoBack(); } catch (_) {}
+      if (canGoBack && typeof nav.goBack === "function") {
+        try { nav.goBack(); } catch (_) {}
+        return setTimeout(closeOne, 120);
+      }
+      try {
+        if (typeof nav.dismiss === "function") nav.dismiss();
+      } catch (_) {}
+      selectAfterClose();
+    };
+    closeOne();
   }
 
   function ask(title, message, buttons) {
@@ -231,6 +370,13 @@
     const [screen, setScreen] = React.useState("main");
     const [limit, setLimit] = React.useState(PAGE);
     const [, bump] = React.useState(0);
+    let settingsNavigation = null;
+    try {
+      const navigationModule = findByProps("useNavigation");
+      const useNavigation = navigationModule && navigationModule.useNavigation;
+      if (typeof useNavigation === "function") settingsNavigation = useNavigation();
+    } catch (_) {}
+    lastSettingsNavigation = settingsNavigation;
     const refreshUI = () => bump((x) => x + 1);
     const F = ui.components && ui.components.Forms;
     const C = palette();
@@ -270,6 +416,25 @@
       if (purge()) save();
       refreshUI();
     };
+    const editNotificationDuration = () => {
+      try {
+        ui.alerts.showInputAlert({
+          title: "Alert duration (seconds)",
+          confirmText: "Save",
+          cancelText: "Cancel",
+          placeholder: MIN_NOTIFICATION_SECONDS + "–" + MAX_NOTIFICATION_SECONDS,
+          initialValue: String(notificationSeconds()),
+          onConfirm: (value) => {
+            const seconds = Number(String(value).trim());
+            if (!Number.isInteger(seconds) || seconds < MIN_NOTIFICATION_SECONDS || seconds > MAX_NOTIFICATION_SECONDS) {
+              throw new Error("Enter a whole number from " + MIN_NOTIFICATION_SECONDS + " to " + MAX_NOTIFICATION_SECONDS + ".");
+            }
+            cfg().notificationDuration = seconds;
+            refreshUI();
+          },
+        });
+      } catch (_) { toast("Could not open alert duration settings"); }
+    };
 
     let content;
     if (screen === "history") {
@@ -291,7 +456,7 @@
         content.push(PressRow(p.id, clip(p.t, 200) || "(no text)",
           KINDS[p.k] + " · " + p.an + " · " + channelLabel(p.c, p.g) + " · " + fmtTime(p.at), () => {
             ask(KINDS[p.k] + " from " + p.an, clip(p.t, 600), [
-              { text: "Jump to message", onPress: () => jumpTo(p.c, p.g, p.id) },
+              { text: "Jump to message", onPress: () => jumpTo(p.c, p.g, p.id, settingsNavigation) },
               { text: "Remove", style: "destructive", onPress: () => { removePing(p.id); refreshUI(); } },
             ]);
           }));
@@ -306,12 +471,11 @@
         Switch("pingDMs", "Direct messages", "Every deleted message in your DMs"),
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
-        Switch("showToast", "Show an alert", "Shows a banner at the top of the app when it happens"),
+        Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
+        PressRow("duration", "Alert duration", "Automatically dismiss the alert after this many seconds", editNotificationDuration, notificationSeconds() + " sec"),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
         PressRow("retention", "Keep history for", "Older entries are removed automatically", cycleRetention, retentionLabel()),
-        PressRow("jump", "Jump to message method", "Tap to switch if jumping opens the wrong app",
-          () => { cfg().jumpMethod = (cfg().jumpMethod || 1) % 3 + 1; refreshUI(); }, JUMP_METHODS[(cfg().jumpMethod || 1) - 1]),
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
@@ -322,7 +486,7 @@
 
   function onLoad() {
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, retentionDays: 0, jumpMethod: 1 };
+    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, notificationDuration: DEFAULT_NOTIFICATION_SECONDS, retentionDays: 0 };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
 
     if (!loadStores()) { toast("Ghost Ping Logger: required Discord modules not found"); return; }
@@ -339,6 +503,7 @@
     for (const u of unpatches.splice(0)) { try { u(); } catch (_) {} }
     if (appStateSub && appStateSub.remove) { try { appStateSub.remove(); } catch (_) {} }
     appStateSub = null;
+    lastSettingsNavigation = null;
     pings = [];
   }
 
