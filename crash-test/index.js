@@ -2,34 +2,61 @@
   "use strict";
   const { metro, patcher, plugin, ui } = vendetta;
   const vstorage = vendetta.storage;
-  const { findByProps, findByStoreName } = metro;
+  const { findByName, findByProps, findByStoreName } = metro;
   const { FluxDispatcher, React, ReactNative: RN } = metro.common;
 
   const MAX_PINGS = 200;
+  const MAX_EDITED = 200;
+  const MAX_EDIT_VERSIONS = 5;
   const DEFAULT_RECENT_MESSAGES = 1000;
   const MIN_RECENT_MESSAGES = 100;
   const MAX_RECENT_MESSAGES = 5000;
   const MAX_SNIPPET = 300;
-  const BUILD = "v1.5";
+  const BUILD = "v1.0.0";
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
+  const GREY = "#80848E";
+  const INLINE = new Set(["text", "strong", "em", "u", "s", "inlineCode"]);
   const KINDS = { dm: "DM", reply: "Reply", mention: "Mention" };
 
   const unpatches = [];
+  const AML_BRIDGE_KEY = "__advanced_message_logger_gpl_bridge_v1__";
   let pings = [];
   const recentMessages = new Map();
+  const retainedPings = new Map();
+  const editHistory = new Map();
   let MessageStore;
   let UserStore;
   let ChannelStore;
   let SelectedChannelStore;
   let ThemeStore;
   let appStateSub = null;
+  let renderUnpatch = null;
   let lastSettingsNavigation = null;
 
   const cfg = () => plugin.storage;
   const toast = (t) => { try { ui.toasts.showToast(t); } catch (_) {} };
   const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
+
+  function amlOwnsRetention(message, channelId, guildId) {
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      return !!(bridge && bridge.active && typeof bridge.shouldRetainDelete === "function" && bridge.shouldRetainDelete(message, channelId, guildId));
+    } catch (_) { return false; }
+  }
+  function amlOwnsDeletedMessage(id) {
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      return !!(bridge && bridge.active && typeof bridge.ownsDeletedMessage === "function" && bridge.ownsDeletedMessage(id));
+    } catch (_) { return false; }
+  }
+  function amlOwnsEditedMessage(id) {
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      return !!(bridge && bridge.active && typeof bridge.ownsEditedMessage === "function" && bridge.ownsEditedMessage(id));
+    } catch (_) { return false; }
+  }
 
   function fmtTime(ms) {
     const d = new Date(ms);
@@ -259,6 +286,7 @@
     if (pings.length > MAX_PINGS) pings.length = MAX_PINGS;
     save();
     if (cfg().showToast) showPingAlert(entry);
+    return entry;
   }
 
   function check(msg, channelId, guildId) {
@@ -271,20 +299,169 @@
     if (s.pingDMs && isDM(getChannel(channelId))) kind = "dm";
     if (!kind && s.pingReplies && isReplyToMe(msg, channelId, me)) kind = "reply";
     if (!kind && s.pingMentions && mentionsMe(msg, me)) kind = "mention";
-    if (!kind || pings.some((p) => p.id === msg.id)) return;
-    addPing({
+    if (!kind) return null;
+    const existing = pings.find((p) => String(p.id) === String(msg.id));
+    if (existing) return existing;
+    return addPing({
       id: msg.id, c: channelId, g: guildId || null, ai: msg.author.id, an: nameOf(msg.author),
       t: clip(msg.content, MAX_SNIPPET), k: kind, at: Date.now(),
     });
   }
 
-  function handle(channelId, guildId, ids) {
+  function rememberEdit(message) {
+    if (!cfg().logEdited || !message || !message.id || typeof message.content !== "string") return;
+    const old = getKnownMessage(message.channel_id || message.channelId, message.id);
+    if (!old || typeof old.content !== "string" || !old.content || old.content === message.content) return;
+    let record = editHistory.get(String(message.id));
+    if (!record) record = { id: String(message.id), c: String(message.channel_id || message.channelId), g: message.guild_id || message.guildId || null, an: nameOf(old.author), previous: [] };
+    record.previous.push({ t: clip(old.content, MAX_SNIPPET), at: Date.now() });
+    if (record.previous.length > MAX_EDIT_VERSIONS) record.previous.shift();
+    record.current = clip(message.content, MAX_SNIPPET);
+    editHistory.delete(String(message.id));
+    editHistory.set(String(message.id), record);
+    while (editHistory.size > MAX_EDITED) editHistory.delete(editHistory.keys().next().value);
+    if (cfg().notifyEdited) toast("Edited message from " + record.an + ": " + clip(record.current, 80));
+  }
+
+  function handle(channelId, guildId, ids, retainForFallback) {
     const g = guildId || guildOf(channelId);
     for (const id of ids) {
       if (!id) continue;
       const msg = getKnownMessage(channelId, id);
-      if (msg) check(msg, channelId, g);
+      if (msg) {
+        const entry = check(msg, channelId, g);
+        if (entry && retainForFallback) retainedPings.set(String(id), entry);
+      }
     }
+  }
+
+  function refreshRetainedMessage(msg, channelId, guildId) {
+    setTimeout(() => {
+      try {
+        FluxDispatcher.dispatch({ type: "MESSAGE_UPDATE", guildId, message: { id: msg.id, channel_id: channelId, guild_id: guildId, flags: (msg.flags | 0) | 0x20000000 } });
+      } catch (_) {}
+    }, 0);
+  }
+
+  function refreshGhostRows() {
+    for (const [id, entry] of retainedPings) {
+      const msg = getMessage(entry.c, id);
+      if (msg) refreshRetainedMessage(msg, entry.c, entry.g || guildOf(entry.c));
+    }
+  }
+
+  function retainGhostPing(msg, channelId, guildId, entry) {
+    retainedPings.set(String(msg.id), entry);
+    while (retainedPings.size > MAX_PINGS) retainedPings.delete(retainedPings.keys().next().value);
+    refreshRetainedMessage(msg, channelId, guildId);
+  }
+
+  function onDelete(e) {
+    if (!e.id || e.loggerRemoval) return null;
+    const msg = getKnownMessage(e.channelId, e.id);
+    if (!msg) return null;
+    const guildId = e.guildId || guildOf(e.channelId);
+    const entry = check(msg, e.channelId, guildId);
+    if (!entry || amlOwnsRetention(msg, e.channelId, guildId)) return null;
+    retainGhostPing(msg, e.channelId, guildId, entry);
+    return { type: "MESSAGE_LOGGER_BLOCKED", original: e, ghostPingLogger: true };
+  }
+
+  function onBulkDelete(e) {
+    if (!Array.isArray(e.ids)) return null;
+    const guildId = e.guildId || guildOf(e.channelId);
+    const pass = [];
+    const keptIds = [];
+    for (const id of e.ids) {
+      const msg = getKnownMessage(e.channelId, id);
+      const entry = msg ? check(msg, e.channelId, guildId) : null;
+      if (!entry || amlOwnsRetention(msg, e.channelId, guildId)) { pass.push(id); continue; }
+      retainGhostPing(msg, e.channelId, guildId, entry);
+      keptIds.push(id);
+    }
+    if (!keptIds.length) return null;
+    if (!pass.length) return { type: "MESSAGE_LOGGER_BLOCKED", original: e, ghostPingLogger: true };
+    return { ...e, ids: pass, loggerKept: keptIds, ghostPingLogger: true };
+  }
+
+  function paint(nodes, color) {
+    if (!color || !Array.isArray(nodes)) return nodes;
+    const out = [];
+    let run = [];
+    const flush = () => {
+      if (!run.length) return;
+      out.push({
+        type: "link", target: "usernameOnClick",
+        context: { username: "", usernameOnClick: { action: "0", userId: "0", linkColor: color, messageChannelId: "0" } },
+        content: run,
+      });
+      run = [];
+    };
+    for (const node of nodes) {
+      if (node && INLINE.has(node.type)) run.push(node);
+      else { flush(); out.push(node); }
+    }
+    flush();
+    return out;
+  }
+
+  function decorate(row, input) {
+    if (!row || !row.message) return;
+    const message = row.message;
+    if ((input && input.rowType !== undefined ? input.rowType : row.rowType) !== 1) return;
+    const ping = retainedPings.has(String(message.id)) && !amlOwnsDeletedMessage(message.id);
+    const edit = cfg().logEdited && !amlOwnsEditedMessage(message.id) ? editHistory.get(String(message.id)) : null;
+    if (!ping && !edit) {
+      if (message.__gplOut && message.content === message.__gplOut) message.content = message.__gplBase;
+      if (message.__gplNameBase) {
+        message.colorString = message.__gplNameBase.colorString;
+        message.usernameColor = message.__gplNameBase.usernameColor;
+        delete message.__gplNameBase;
+      }
+      return;
+    }
+    const processColor = RN && RN.processColor;
+    const red = processColor ? processColor(RED) : null;
+    const grey = processColor ? processColor(GREY) : null;
+    if (ping && processColor && red && cfg().redName !== false) {
+      if (!message.__gplNameBase) message.__gplNameBase = { colorString: message.colorString, usernameColor: message.usernameColor };
+      message.colorString = red;
+      message.usernameColor = red;
+      row.backgroundHighlight = { backgroundColor: processColor(RED + "26"), gutterColor: red };
+    } else if (message.__gplNameBase) {
+      message.colorString = message.__gplNameBase.colorString;
+      message.usernameColor = message.__gplNameBase.usernameColor;
+      delete message.__gplNameBase;
+    }
+    const base = message.__gplOut && message.content === message.__gplOut ? message.__gplBase : message.content;
+    if (Array.isArray(base)) {
+      let out = ping && red ? paint(base, red) : base;
+      if (edit && grey) {
+        const previous = [];
+        for (const version of edit.previous) previous.push(...paint([{ type: "text", content: version.t + "\n" }], grey));
+        out = previous.concat(out);
+      }
+      message.__gplBase = base;
+      message.__gplOut = out;
+      message.content = out;
+    }
+    if (!ping && edit && processColor && grey && !row.backgroundHighlight) {
+      row.backgroundHighlight = { backgroundColor: processColor(GREY + "14"), gutterColor: processColor(GREY + "80") };
+    }
+  }
+
+  function patchRender() {
+    let RowManager = findByName("RowManager");
+    if (!RowManager || !RowManager.prototype) {
+      try { RowManager = findByName("RowManager", false)?.default; } catch (_) {}
+    }
+    if (!RowManager || !RowManager.prototype || typeof RowManager.prototype.generate !== "function") {
+      toast("Ghost Ping Logger: could not find the message renderer");
+      return null;
+    }
+    return patcher.after("generate", RowManager.prototype, (args, result) => {
+      try { decorate(result, args[0]); } catch (_) {}
+    });
   }
 
   function hookDispatch(args) {
@@ -293,13 +470,20 @@
     try {
       if (e.loggerRemoval) return;
       if (e.type === "MESSAGE_CREATE") rememberMessage(e.message);
-      else if (e.type === "MESSAGE_UPDATE") rememberMessage(e.message);
-      else if (e.type === "MESSAGE_DELETE") handle(e.channelId, e.guildId, [e.id]);
-      else if (e.type === "MESSAGE_DELETE_BULK") handle(e.channelId, e.guildId, [].concat(e.ids || [], e.loggerKept || []));
-      else if (e.type === "MESSAGE_LOGGER_BLOCKED" && e.original) {
+      else if (e.type === "MESSAGE_UPDATE") { rememberEdit(e.message); rememberMessage(e.message); }
+      else if (e.type === "MESSAGE_DELETE") {
+        const result = onDelete(e);
+        if (result) args[0] = result;
+      }
+      else if (e.type === "MESSAGE_DELETE_BULK") {
+        if (Array.isArray(e.loggerKept) && e.loggerKept.length) handle(e.channelId, e.guildId, e.loggerKept, true);
+        const result = onBulkDelete(e);
+        if (result) args[0] = result;
+      }
+      else if (e.type === "MESSAGE_LOGGER_BLOCKED" && e.original && !e.ghostPingLogger) {
         const o = e.original;
-        if (o.type === "MESSAGE_DELETE") handle(o.channelId, o.guildId, [o.id]);
-        else if (o.type === "MESSAGE_DELETE_BULK") handle(o.channelId, o.guildId, [].concat(o.ids || [], o.loggerKept || []));
+        if (o.type === "MESSAGE_DELETE") handle(o.channelId, o.guildId, [o.id], true);
+        else if (o.type === "MESSAGE_DELETE_BULK") handle(o.channelId, o.guildId, [].concat(o.ids || [], o.loggerKept || []), true);
       }
     } catch (_) {}
   }
@@ -319,6 +503,10 @@
   function removePing(id) {
     pings = pings.filter((p) => p.id !== id);
     save();
+  }
+
+  function removeEdit(id) {
+    editHistory.delete(String(id));
   }
 
   function jumpTo(channelId, guildId, messageId, navigation) {
@@ -484,9 +672,9 @@
           sub ? Text({ style: { color: C.sub, fontSize: 13, marginTop: 2 } }, sub) : null),
         right ? Text({ style: { color: C.sub, fontSize: 15 } }, right) : null);
 
-    const Switch = (key, label, sub) => {
+    const Switch = (key, label, sub, onChange) => {
       const value = !!cfg()[key];
-      const change = (v) => { cfg()[key] = v; refreshUI(); };
+      const change = onChange || ((v) => { cfg()[key] = v; refreshUI(); });
       return F && F.FormSwitchRow
         ? h(F.FormSwitchRow, { key, label, subLabel: sub, value, onValueChange: change })
         : h(RN.View, { key, style: { flexDirection: "row", alignItems: "center", padding: 16 } },
@@ -565,6 +753,28 @@
           }));
       });
       if (pings.length > limit) content.push(Btn("more", "Show more", () => setLimit(limit + PAGE)));
+    } else if (screen === "edits") {
+      const entries = [...editHistory.values()].reverse();
+      content = [
+        Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
+        h(RN.View, { key: "edits-title", style: { paddingHorizontal: 16, paddingVertical: 8 } },
+          Text({ style: { color: C.text, fontSize: 20, fontWeight: "700" } }, "Edited messages (" + entries.length + ")")),
+      ];
+      if (!entries.length) content.push(Text({ key: "edits-empty", style: { color: C.sub, padding: 16 } }, "No edited messages tracked in this session."));
+      entries.slice(0, limit).forEach(function (entry) {
+        const id = String(entry.id);
+        const channelId = String(entry.c || "");
+        const guildId = entry.g || null;
+        const versions = entry.previous.map((version, index) => "Version " + (index + 1) + ":\n" + version.t).join("\n\n");
+        content.push(PressRow("edited-" + id, clip(entry.current, 160) || "(no text)",
+          (entry.an || "Unknown") + " · " + channelLabel(channelId, guildId), () => {
+            ask("Edit history · " + (entry.an || "Unknown"), clip(versions + "\n\nCurrent:\n" + (entry.current || ""), 3000), [
+              { text: "Jump to message", onPress: () => jumpTo(channelId, guildId, id, settingsNavigation) },
+              { text: "Remove", style: "destructive", onPress: () => { removeEdit(id); refreshUI(); } },
+            ]);
+          }));
+      });
+      if (entries.length > limit) content.push(Btn("more-edits", "Show more", () => setLimit(limit + PAGE)));
     } else {
       content = [
         Section("Detection"),
@@ -575,11 +785,15 @@
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
+        Switch("logEdited", "Track edited messages", "Keep recent previous versions while this plugin is active"),
+        Switch("notifyEdited", "Notify about edits", "Show a toast when an edit is captured"),
+        Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
         PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
         PressRow("cache-limit", "Maximum cached messages", "Expanded Cache only · held in memory", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
+        PressRow("nav-edits", "Edited messages", editHistory.size + " this session", () => { setLimit(PAGE); setScreen("edits"); }, ">"),
         PressRow("retention", "Keep history for", "Older entries are removed automatically", cycleRetention, retentionLabel()),
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
@@ -591,16 +805,19 @@
 
   function onLoad() {
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES };
+    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: false, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, logEdited: true, notifyEdited: false, redName: true };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
     if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
     if (!loadStores()) { toast("Ghost Ping Logger: required Discord modules not found"); return; }
     recentMessages.clear();
+    retainedPings.clear();
+    editHistory.clear();
     try { pings = Array.isArray(s.pings) ? JSON.parse(JSON.stringify(s.pings)) : []; } catch (_) { pings = []; }
     if (purge()) save();
 
     try { unpatches.push(patcher.before("dispatch", FluxDispatcher, hookDispatch)); } catch (_) { return; }
+    try { renderUnpatch = patchRender(); } catch (_) {}
     try {
       appStateSub = RN.AppState.addEventListener("change", (state) => { if (state === "active" && purge()) save(); });
     } catch (_) {}
@@ -608,10 +825,13 @@
 
   function onUnload() {
     for (const u of unpatches.splice(0)) { try { u(); } catch (_) {} }
+    if (renderUnpatch) { try { renderUnpatch(); } catch (_) {} renderUnpatch = null; }
     if (appStateSub && appStateSub.remove) { try { appStateSub.remove(); } catch (_) {} }
     appStateSub = null;
     lastSettingsNavigation = null;
     recentMessages.clear();
+    retainedPings.clear();
+    editHistory.clear();
     pings = [];
   }
 
