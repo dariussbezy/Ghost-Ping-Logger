@@ -11,7 +11,7 @@
   const DEFAULT_NOTIFICATION_SECONDS = 15;
   const MIN_NOTIFICATION_SECONDS = 3;
   const MAX_NOTIFICATION_SECONDS = 120;
-  const BUILD = "v1.3";
+  const BUILD = "v1.5";
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
@@ -133,6 +133,66 @@
       const alerts = findByProps("openLazy", "close");
       if (alerts && typeof alerts.close === "function") alerts.close();
     } catch (_) {}
+  }
+
+  function NotificationDurationModal(props) {
+    const [value, setValue] = React.useState(String(props.initialValue || DEFAULT_NOTIFICATION_SECONDS));
+    const [error, setError] = React.useState("");
+    const colors = palette();
+    const close = () => closePingAlert();
+    const save = () => {
+      const seconds = Number(String(value).trim());
+      if (!Number.isInteger(seconds) || seconds < MIN_NOTIFICATION_SECONDS || seconds > MAX_NOTIFICATION_SECONDS) {
+        setError("Enter a whole number from " + MIN_NOTIFICATION_SECONDS + " to " + MAX_NOTIFICATION_SECONDS + ".");
+        return;
+      }
+      closePingAlert();
+      if (typeof props.onSave === "function") props.onSave(seconds);
+    };
+    const action = (label, onPress, primary) => React.createElement(RN.Pressable, {
+      key: label,
+      onPress,
+      accessibilityRole: "button",
+      style: {
+        minHeight: 44,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginLeft: primary ? 10 : 0,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)",
+      },
+    }, React.createElement(RN.Text, { style: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" } }, label));
+    return React.createElement(RN.View, {
+      style: {
+        width: "100%",
+        maxWidth: 440,
+        alignSelf: "center",
+        padding: 20,
+        borderRadius: 14,
+        backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF",
+      },
+    },
+      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Alert duration"),
+      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "Choose 3–120 seconds before the alert closes automatically."),
+      React.createElement(RN.TextInput, {
+        value,
+        onChangeText: (next) => { setValue(next); setError(""); },
+        keyboardType: "number-pad",
+        placeholder: String(DEFAULT_NOTIFICATION_SECONDS),
+        accessibilityLabel: "Alert duration in seconds",
+        style: {
+          minHeight: 48,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          color: colors.text,
+          fontSize: 17,
+          backgroundColor: "rgba(128,128,128,0.16)",
+        },
+      }),
+      error ? React.createElement(RN.Text, { style: { color: RED, fontSize: 13, marginTop: 8 } }, error) : null,
+      React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end", marginTop: 18 } },
+        action("Cancel", close, false), action("Save", save, true)));
   }
 
   function GhostPingAlert(props) {
@@ -483,17 +543,9 @@
     };
     const editNotificationDuration = () => {
       try {
-        ui.alerts.showInputAlert({
-          title: "Alert duration (seconds)",
-          confirmText: "Save",
-          cancelText: "Cancel",
-          placeholder: MIN_NOTIFICATION_SECONDS + "–" + MAX_NOTIFICATION_SECONDS,
-          initialValue: String(notificationSeconds()),
-          onConfirm: (value) => {
-            const seconds = Number(String(value).trim());
-            if (!Number.isInteger(seconds) || seconds < MIN_NOTIFICATION_SECONDS || seconds > MAX_NOTIFICATION_SECONDS) {
-              throw new Error("Enter a whole number from " + MIN_NOTIFICATION_SECONDS + " to " + MAX_NOTIFICATION_SECONDS + ".");
-            }
+        ui.alerts.showCustomAlert(NotificationDurationModal, {
+          initialValue: notificationSeconds(),
+          onSave: (seconds) => {
             cfg().notificationDuration = seconds;
             refreshUI();
           },
@@ -517,15 +569,25 @@
       } else {
         content.push(Text({ key: "empty", style: { color: C.sub, padding: 16 } }, "No ghost pings yet."));
       }
-      for (const p of pings.slice(0, limit)) {
-        content.push(PressRow(p.id, clip(p.t, 200) || "(no text)",
-          KINDS[p.k] + " · " + p.an + " · " + channelLabel(p.c, p.g) + " · " + fmtTime(p.at), () => {
-            ask(KINDS[p.k] + " from " + p.an, clip(p.t, 600), [
-              { text: "Jump to message", onPress: () => jumpTo(p.c, p.g, p.id, settingsNavigation) },
-              { text: "Remove", style: "destructive", onPress: () => { removePing(p.id); refreshUI(); } },
+      pings.slice(0, limit).forEach(function (entry) {
+        // Keep each row's identity and action bound to the same immutable
+        // values. This mirrors the isolated row callbacks used by AML logs.
+        const pingId = String(entry.id);
+        const channelId = entry.c == null ? null : String(entry.c);
+        const guildId = entry.g == null ? null : String(entry.g);
+        const kind = KINDS[entry.k] || "Ghost ping";
+        const authorName = String(entry.an || "Unknown");
+        const messageText = String(entry.t || "");
+        const occurredAt = Number(entry.at) || 0;
+        const rowKey = "ghost-history-" + pingId;
+        content.push(PressRow(rowKey, clip(messageText, 200) || "(no text)",
+          kind + " · " + authorName + " · " + channelLabel(channelId, guildId) + " · " + fmtTime(occurredAt), function () {
+            ask(kind + " from " + authorName, clip(messageText, 600), [
+              { text: "Jump to message", onPress: () => jumpTo(channelId, guildId, pingId, settingsNavigation) },
+              { text: "Remove", style: "destructive", onPress: () => { removePing(pingId); refreshUI(); } },
             ]);
           }));
-      }
+      });
       if (pings.length > limit) content.push(Btn("more", "Show more", () => setLimit(limit + PAGE)));
     } else {
       content = [
