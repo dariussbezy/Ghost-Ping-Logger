@@ -196,7 +196,7 @@
       key: label,
       onPress,
       accessibilityRole: "button",
-      style: { minHeight: 44, paddingHorizontal: 16, borderRadius: 8, marginLeft: primary ? 10 : 0, alignItems: "center", justifyContent: "center", backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)" },
+      style: { minHeight: 46, paddingHorizontal: 18, borderRadius: 14, marginLeft: primary ? 10 : 0, alignItems: "center", justifyContent: "center", backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)" },
     }, React.createElement(RN.Text, { style: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" } }, label));
     const save = () => {
       const count = Number(String(value).trim());
@@ -207,10 +207,10 @@
       closeSettingsAlert();
       if (typeof props.onSave === "function") props.onSave(count);
     };
-    return React.createElement(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 20, borderRadius: 14, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
+    return React.createElement(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 22, borderRadius: 22, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
       React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Maximum cached messages"),
       React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "All Channels mode only. Higher values use more memory. Keeps messages Discord sends or loads while Kettu runs; no history is fetched."),
-      React.createElement(RN.TextInput, { value, onChangeText: (next) => { setValue(next); setError(""); }, keyboardType: "number-pad", accessibilityLabel: "Maximum cached messages", style: { minHeight: 48, paddingHorizontal: 12, borderRadius: 8, color: colors.text, fontSize: 17, backgroundColor: "rgba(128,128,128,0.16)" } }),
+      React.createElement(RN.TextInput, { value, onChangeText: (next) => { setValue(next); setError(""); }, keyboardType: "number-pad", accessibilityLabel: "Maximum cached messages", style: { minHeight: 48, paddingHorizontal: 14, borderRadius: 14, color: colors.text, fontSize: 17, backgroundColor: "rgba(128,128,128,0.16)" } }),
       error ? React.createElement(RN.Text, { style: { color: RED, fontSize: 13, marginTop: 8 } }, error) : null,
       React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end", marginTop: 18 } },
         action("Cancel", closeSettingsAlert, false), action("Save", save, true)));
@@ -226,36 +226,25 @@
     };
     const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
     const colors = palette();
-    const button = (label, onPress, primary) => React.createElement(RN.Pressable, {
-      key: label,
-      onPress,
-      accessibilityRole: "button",
-      style: {
-        minHeight: 46,
-        paddingHorizontal: 16,
-        borderRadius: 8,
-        alignItems: "center",
-        justifyContent: "center",
-        marginLeft: primary ? 10 : 0,
-        backgroundColor: primary ? "#5865F2" : "rgba(128,128,128,0.22)",
-      },
-    }, React.createElement(RN.Text, { style: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" } }, label));
-    return React.createElement(RN.View, {
-      style: {
-        width: "100%",
-        maxWidth: 440,
-        alignSelf: "center",
-        padding: 20,
-        borderRadius: 14,
-        backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF",
-      },
-    },
-      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 12 } }, "Ghost Ping Logger"),
-      React.createElement(RN.Text, { style: { color: colors.text, fontSize: 15, lineHeight: 21 } },
-        "Ghost ping: " + entry.an + " " + what + "\n\n" + (entry.t || "(no message text)")),
-      React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end" } },
-        !isTest ? button("Dismiss", close, false) : null,
-        button(isTest ? "Close" : "Jump to message", isTest ? close : jump, true)));
+    const h = React.createElement;
+    const dark = colors.text === "#FFFFFF";
+    const btn = (label, onPress, primary) => h(RN.Pressable, {
+      key: label, onPress, accessibilityRole: "button",
+      style: ({ pressed }) => ({ flex: 1, minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", marginLeft: primary ? 10 : 0, backgroundColor: primary ? (pressed ? "#4752C4" : "#5865F2") : (pressed ? "rgba(128,128,128,0.32)" : "rgba(128,128,128,0.22)") }),
+    }, h(RN.Text, { style: { color: primary ? "#FFFFFF" : colors.text, fontSize: 15, fontWeight: "700" } }, label));
+    return h(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 22, borderRadius: 22, backgroundColor: dark ? "#2B2D31" : "#FFFFFF" } },
+      h(RN.View, { style: { flexDirection: "row", alignItems: "center" } },
+        h(RN.View, { style: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(237,66,69,0.16)" } },
+          h(RN.Text, { style: { fontSize: 24 } }, "\uD83D\uDC7B")),
+        h(RN.View, { style: { flex: 1, marginLeft: 14 } },
+          h(RN.Text, { style: { color: RED, fontSize: 12, fontWeight: "700", letterSpacing: 0.8 } }, "GHOST PING"),
+          h(RN.Text, { style: { color: colors.text, fontSize: 18, fontWeight: "700", marginTop: 2 }, numberOfLines: 1 }, String(entry.an || "Unknown")))),
+      h(RN.Text, { style: { color: colors.sub, fontSize: 14, marginTop: 14 } }, what),
+      h(RN.View, { style: { marginTop: 10, padding: 14, borderRadius: 14, borderLeftWidth: 4, borderLeftColor: RED, backgroundColor: "rgba(237,66,69,0.10)" } },
+        h(RN.Text, { style: { color: colors.text, fontSize: 15, lineHeight: 21 } }, entry.t || "(no message text)")),
+      h(RN.View, { style: { flexDirection: "row", marginTop: 20 } },
+        !isTest ? btn("Dismiss", close, false) : null,
+        btn(isTest ? "Close" : "Jump to message", isTest ? close : jump, true)));
   }
 
   function showPingAlert(entry) {
@@ -347,6 +336,8 @@
     if (!cfg().logEdited || !message || !message.id || typeof message.content !== "string") return;
     const old = getKnownMessage(message.channel_id || message.channelId, message.id);
     if (!old || typeof old.content !== "string" || !old.content || old.content === message.content) return;
+    const authorId = (message.author && message.author.id) || (old.author && old.author.id);
+    if (authorId && authorId === myId()) return;
     let record = editHistory.get(String(message.id));
     if (!record) record = { id: String(message.id), c: String(message.channel_id || message.channelId), g: message.guild_id || message.guildId || null, an: nameOf(old.author), previous: [] };
     record.previous.push({ t: clip(old.content, MAX_SNIPPET), at: Date.now() });
@@ -440,6 +431,9 @@
     return out;
   }
 
+  const isOurs = (n) => !!n && typeof n === "object" && n.__gpl === 1;
+  const ours = (nodes) => { for (const n of nodes) { try { if (n && typeof n === "object") n.__gpl = 1; } catch (_) {} } return nodes; };
+
   function decorate(row, input) {
     if (!row || !row.message) return;
     const message = row.message;
@@ -448,6 +442,7 @@
     const edit = cfg().logEdited && !amlOwnsEditedMessage(message.id) ? editHistory.get(String(message.id)) : null;
     if (!ping && !edit) {
       if (message.__gplOut && message.content === message.__gplOut) message.content = message.__gplBase;
+      else if (Array.isArray(message.content) && message.content.some(isOurs)) message.content = message.content.filter((n) => !isOurs(n));
       if (message.__gplNameBase) {
         message.colorString = message.__gplNameBase.colorString;
         message.usernameColor = message.__gplNameBase.usernameColor;
@@ -468,12 +463,13 @@
       message.usernameColor = message.__gplNameBase.usernameColor;
       delete message.__gplNameBase;
     }
-    const base = message.__gplOut && message.content === message.__gplOut ? message.__gplBase : message.content;
+    let base = message.__gplOut && message.content === message.__gplOut ? message.__gplBase : message.content;
+    if (Array.isArray(base) && base.some(isOurs)) base = base.filter((n) => !isOurs(n));
     if (Array.isArray(base)) {
       let out = ping && red ? paint(base, red) : base;
       if (edit && grey) {
         const previous = [];
-        for (const version of edit.previous) previous.push(...paint([{ type: "text", content: version.t + "\n" }], grey));
+        for (const version of edit.previous) previous.push(...ours(paint([{ type: "text", content: version.t + "\n" }], grey)));
         out = previous.concat(out);
       }
       message.__gplBase = base;
@@ -543,7 +539,17 @@
   }
 
   function removeEdit(id) {
+    const record = editHistory.get(String(id));
     editHistory.delete(String(id));
+    if (!record) return;
+    const msg = getMessage(record.c, String(id));
+    if (!msg) return;
+    const guildId = record.g || guildOf(record.c);
+    setTimeout(() => {
+      try {
+        FluxDispatcher.dispatch({ type: "MESSAGE_UPDATE", guildId, message: { id: msg.id, channel_id: record.c, guild_id: guildId, flags: (msg.flags | 0) ^ 0x20000000 } });
+      } catch (_) {}
+    }, 0);
   }
 
   function jumpTo(channelId, guildId, messageId, navigation) {
@@ -692,7 +698,9 @@
       ThemeStore = ThemeStore || findByStoreName("ThemeStore");
       light = !!ThemeStore && ThemeStore.theme === "light";
     } catch (_) {}
-    return light ? { text: "#060607", sub: "#5C5E66" } : { text: "#FFFFFF", sub: "#B5BAC1" };
+    return light
+      ? { text: "#060607", sub: "#5C5E66", acc: "#4752C4", blurple: "#5865F2", card2: "rgba(0,0,0,0.045)", chip: "rgba(0,0,0,0.07)", press: "rgba(0,0,0,0.06)", divider: "rgba(0,0,0,0.09)", off: "#B5BAC1" }
+      : { text: "#FFFFFF", sub: "#B5BAC1", acc: "#8EA1FF", blurple: "#5865F2", card2: "rgba(255,255,255,0.06)", chip: "rgba(255,255,255,0.10)", press: "rgba(255,255,255,0.07)", divider: "rgba(255,255,255,0.09)", off: "#4E5058" };
   }
 
   function Settings() {
@@ -708,36 +716,107 @@
     } catch (_) {}
     lastSettingsNavigation = settingsNavigation;
     const refreshUI = () => bump((x) => x + 1);
-    const F = ui.components && ui.components.Forms;
     const C = palette();
     const h = React.createElement;
 
+    const rowSet = new WeakSet();
+    const mark = (el) => { rowSet.add(el); return el; };
+    const HEXCOLOR = /^#[0-9A-Fa-f]{6}$/;
     const Text = (props, ...kids) => h(RN.Text, props, ...kids);
-    const Section = (title) =>
-      h(RN.View, { key: "sec-" + title, style: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 4 } },
-        Text({ style: { color: C.sub, fontSize: 12, fontWeight: "600" } }, title.toUpperCase()));
+    const rowStyle = ({ pressed }) => ({ paddingHorizontal: 16, paddingVertical: 13, minHeight: 56, flexDirection: "row", alignItems: "center", backgroundColor: pressed ? C.press : "transparent" });
+    const rowText = (label, sub) => h(RN.View, { style: { flex: 1 } },
+      Text({ style: { color: C.text, fontSize: 16, fontWeight: "500" }, numberOfLines: 4 }, label),
+      sub ? Text({ style: { color: C.sub, fontSize: 13, lineHeight: 18, marginTop: 2 }, numberOfLines: 4 }, sub) : null);
 
-    const PressRow = (key, label, sub, onPress, right) =>
-      h(RN.Pressable, { key, onPress, style: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center" } },
-        h(RN.View, { style: { flex: 1 } },
-          Text({ style: { color: C.text, fontSize: 16 } }, label),
-          sub ? Text({ style: { color: C.sub, fontSize: 13, marginTop: 2 } }, sub) : null),
-        right ? Text({ style: { color: C.sub, fontSize: 15 } }, right) : null);
+    const Section = (title) =>
+      h(RN.View, { key: "sec-" + title, style: { paddingHorizontal: 30, paddingTop: 24, paddingBottom: 6 } },
+        Text({ style: { color: C.acc, fontSize: 12, fontWeight: "700", letterSpacing: 0.8 } }, title.toUpperCase()));
+
+    const valueChip = (right, rightColor) => {
+      if (!right) return null;
+      if (right === ">" || right === "\u203A") return Text({ style: { color: C.sub, fontSize: 24, marginLeft: 8 } }, "\u203A");
+      if (right === "Selected") return Text({ style: { color: C.acc, fontSize: 20, fontWeight: "700", marginLeft: 8 } }, "\u2713");
+      if (HEXCOLOR.test(right)) {
+        return h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginLeft: 8 } },
+          h(RN.View, { style: { width: 22, height: 22, borderRadius: 11, backgroundColor: right, borderWidth: 2, borderColor: C.divider } }),
+          Text({ style: { color: C.sub, fontSize: 13, marginLeft: 8 } }, right));
+      }
+      return h(RN.View, { style: { marginLeft: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: C.chip, maxWidth: "50%" } },
+        Text({ style: { color: rightColor || C.text, fontSize: 14, fontWeight: "600" }, numberOfLines: 2 }, right));
+    };
+
+    const PressRow = (key, label, sub, onPress, right, rightColor) => mark(
+      h(RN.Pressable, { key, onPress, accessibilityRole: "button", style: rowStyle },
+        rowText(label, sub), valueChip(right, rightColor)));
+
+    const switchRow = (key, label, sub, value, change) => mark(
+      h(RN.Pressable, { key, onPress: () => change(!value), style: rowStyle },
+        h(RN.View, { style: { flex: 1, paddingRight: 12 } },
+          Text({ style: { color: C.text, fontSize: 16, fontWeight: "500" } }, label),
+          sub ? Text({ style: { color: C.sub, fontSize: 13, lineHeight: 18, marginTop: 2 } }, sub) : null),
+        h(RN.Switch, { value, onValueChange: change, trackColor: { false: C.off, true: C.blurple }, thumbColor: "#FFFFFF", ios_backgroundColor: C.off })));
+
+    const Btn = (key, title, onPress, color) => {
+      if (key === "back") {
+        return h(RN.View, { key, style: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2, flexDirection: "row" } },
+          h(RN.Pressable, { onPress, accessibilityRole: "button", style: ({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 20, backgroundColor: pressed ? C.press : C.chip }) },
+            Text({ style: { color: C.text, fontSize: 15, fontWeight: "600" } }, "\u2039  Back")));
+      }
+      const danger = color === RED;
+      return h(RN.View, { key, style: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 } },
+        h(RN.Pressable, {
+          onPress, accessibilityRole: "button",
+          style: ({ pressed }) => ({ minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: danger ? (pressed ? "rgba(237,66,69,0.30)" : "rgba(237,66,69,0.16)") : (pressed ? C.press : C.chip) }),
+        }, Text({ style: { color: danger ? RED : C.text, fontSize: 15, fontWeight: "700" } }, title)));
+    };
+
+    const Empty = (key, text) =>
+      h(RN.View, { key, style: { marginHorizontal: 16, marginTop: 12, padding: 24, borderRadius: 16, backgroundColor: C.card2, alignItems: "center" } },
+        Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20, textAlign: "center" } }, text));
+
+    const Title = (key, text) =>
+      h(RN.View, { key, style: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4 } },
+        Text({ style: { color: C.text, fontSize: 24, fontWeight: "700" } }, text));
+
+    const Header = (title, subtitle) =>
+      h(RN.View, { key: "build", style: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 2 } },
+        Text({ style: { color: C.text, fontSize: 28, fontWeight: "800" } }, title),
+        h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginTop: 8, flexWrap: "wrap" } },
+          h(RN.View, { style: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: C.chip, marginRight: 10 } },
+            Text({ style: { color: C.sub, fontSize: 11, fontWeight: "700" } }, "Build " + BUILD)),
+          Text({ style: { color: C.sub, fontSize: 13, flexShrink: 1 } }, subtitle)));
+
+    const buildTag = () =>
+      h(RN.View, { key: "build", style: { paddingHorizontal: 20, paddingTop: 8 } },
+        Text({ style: { color: C.sub, fontSize: 11 } }, "Build " + BUILD));
+
+    // Rows that sit next to each other are grouped into one rounded card with dividers.
+    const compose = (list) => {
+      const out = [];
+      let run = [];
+      const flush = () => {
+        if (!run.length) return;
+        const kids = [];
+        run.forEach((r, i) => {
+          if (i) kids.push(h(RN.View, { key: "div-" + r.key, style: { height: 1, backgroundColor: C.divider, marginLeft: 16 } }));
+          kids.push(r);
+        });
+        out.push(h(RN.View, { key: "card-" + out.length, style: { marginHorizontal: 16, marginTop: 4, borderRadius: 16, backgroundColor: C.card2, overflow: "hidden" } }, ...kids));
+        run = [];
+      };
+      for (const el of list) {
+        if (el && rowSet.has(el)) run.push(el);
+        else { flush(); if (el) out.push(el); }
+      }
+      flush();
+      return out;
+    };
 
     const Switch = (key, label, sub, onChange) => {
       const value = !!cfg()[key];
       const change = onChange || ((v) => { cfg()[key] = v; refreshUI(); });
-      return F && F.FormSwitchRow
-        ? h(F.FormSwitchRow, { key, label, subLabel: sub, value, onValueChange: change })
-        : h(RN.View, { key, style: { flexDirection: "row", alignItems: "center", padding: 16 } },
-            h(RN.View, { style: { flex: 1 } },
-              Text({ style: { color: C.text, fontSize: 16 } }, label),
-              Text({ style: { color: C.sub, fontSize: 13 } }, sub)),
-            h(RN.Switch, { value, onValueChange: change }));
+      return switchRow(key, label, sub, value, change);
     };
-
-    const Btn = (key, title, onPress, color) =>
-      h(RN.View, { key, style: { paddingHorizontal: 16, paddingVertical: 6 } }, h(RN.Button, { title, onPress, color }));
 
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
     const captureModeLabel = () => cfg().captureMode === "expanded" ? "All Channels" : "Loaded Only";
@@ -773,8 +852,7 @@
     if (screen === "history") {
       content = [
         Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
-        h(RN.View, { key: "title", style: { paddingHorizontal: 16, paddingVertical: 8 } },
-          Text({ style: { color: C.text, fontSize: 20, fontWeight: "700" } }, "Ghost pings (" + pings.length + ")")),
+        Title("title", "Ghost pings (" + pings.length + ")"),
       ];
       if (pings.length) {
         content.push(Btn("clear", "Clear history", () => {
@@ -783,7 +861,7 @@
           ]);
         }, RED));
       } else {
-        content.push(Text({ key: "empty", style: { color: C.sub, padding: 16 } }, "No ghost pings yet."));
+        content.push(Empty("empty", "No ghost pings yet."));
       }
       pings.slice(0, limit).forEach(function (entry) {
         // Keep each row's identity and action bound to the same immutable
@@ -809,10 +887,9 @@
       const entries = [...editHistory.values()].reverse();
       content = [
         Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
-        h(RN.View, { key: "edits-title", style: { paddingHorizontal: 16, paddingVertical: 8 } },
-          Text({ style: { color: C.text, fontSize: 20, fontWeight: "700" } }, "Edited messages (" + entries.length + ")")),
+        Title("edits-title", "Edited messages (" + entries.length + ")"),
       ];
-      if (!entries.length) content.push(Text({ key: "edits-empty", style: { color: C.sub, padding: 16 } }, "No edited messages tracked in this session."));
+      if (!entries.length) content.push(Empty("edits-empty", "No edited messages tracked in this session."));
       entries.slice(0, limit).forEach(function (entry) {
         const id = String(entry.id);
         const channelId = String(entry.c || "");
@@ -850,9 +927,8 @@
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    content.unshift(h(RN.View, { key: "build", style: { paddingHorizontal: 16, paddingTop: 8 } },
-      Text({ style: { color: C.sub, fontSize: 11 } }, "Build " + BUILD)));
-    return h(RN.ScrollView, { key: screen }, ...content);
+    content.unshift(screen === "main" ? Header("Ghost Ping Logger", "Know when a message that pinged you gets deleted") : buildTag());
+    return h(RN.ScrollView, { key: screen, contentContainerStyle: { paddingBottom: 40 } }, ...compose(content));
   }
 
   function onLoad() {
