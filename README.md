@@ -1,28 +1,28 @@
 # Ghost Ping Logger
 
-A Kettu plugin that detects deleted messages that pinged you, keeps them available for jump navigation, and can track edited-message history.
+A Kettu plugin that detects deleted messages that pinged you, keeps them available for jump navigation, and works on its own or alongside Advanced Message Logger.
 
 ## Features
 
-- **Ghost ping detection** for deleted messages in DMs, replies to your messages, and messages that mention you. Each type can be enabled or disabled separately.
-- **Ghost ping alerts** can show a modal with the message and options to jump to it or dismiss the alert.
-- **Retained ghost pings** remain visible in chat with red message text and, optionally, a red username so you can still use Jump to message after deletion.
+- **Ghost ping detection** for deleted messages that mention you or reply to your messages. Each type can be enabled separately.
+- **Ghost ping alerts** show a prompt with the message and options to jump to it or dismiss the alert.
+- **Retained ghost pings** remain visible in chat with red message text and, optionally, a red username.
 - **Ghost ping history** is saved locally, with a configurable retention period of 7 days, 30 days, or forever. Up to 200 entries are kept.
-- **Edited-message tracking** keeps previous versions for the current session and displays them above the edited message in gray. Up to 200 messages and five previous versions per message are kept.
-- **Edit history** is available in plugin settings and includes a Jump to message action.
-- **Edit notifications** can be enabled separately and show a toast for edited messages in DMs only.
-- **Capture modes** offer Loaded Only or Expanded Cache. Expanded Cache retains a bounded number of incoming messages from channels you have not opened; it does not fetch channel history.
-- **Maximum cached messages** is configurable. The default is 200 messages in Expanded Cache.
-- **Ignore bots** is enabled by default. Red usernames on ghost pings and ghost ping alerts can also be toggled in settings.
+- **Capture modes** offer Loaded Only or All Channels. All Channels keeps a bounded cache of messages Discord delivers while Kettu runs; it does not fetch channel history.
+- **Maximum cached messages** is configurable; the default is 200 in All Channels mode.
+- **Ignore bots** is enabled by default. Alerts and red usernames can also be toggled in settings.
 - Includes a test alert to preview the ghost ping notification.
-- Works on its own or alongside Advanced Message Logger. When both are active, the plugins coordinate message retention and DM notifications to avoid duplicate handling and alerts.
+- Works independently or alongside Advanced Message Logger, with coordination to avoid duplicate retention and alerts.
 
 ## Installation
+
 In Kettu, go to **Settings → Plugins**, tap **+**, and paste:
 
 ```text
 https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/main/GPL/
 ```
+
+Enable the plugin, then open its settings to choose what to track and display.
 
 ## Compatibility
 
@@ -34,7 +34,9 @@ https://github.com/dariussbezy/Advanced-Message-Logger/
 
 ## Screenshots:
 
-<img width="1179" height="535" alt="image" src="https://github.com/user-attachments/assets/19aaf7b3-3ba0-4c4e-9716-2fa5a9e27bef" />
-<img width="1179" height="2411" alt="image" src="https://github.com/user-attachments/assets/fd565736-1466-4812-9c95-036198e50c09" />
-<img width="1179" height="2394" alt="image" src="https://github.com/user-attachments/assets/7f0223a5-ccad-46dd-99d3-2b7cc179c650" />
-
+<img width="1179" height="547" alt="image" src="https://github.com/user-attachments/assets/71bdae99-d46d-4e02-ad0a-13915952a86e" />
+<img width="919" height="786" alt="image" src="https://github.com/user-attachments/assets/430528e9-04c8-473a-b11d-137ad7f586a3" />
+<img width="1179" height="2404" alt="image" src="https://github.com/user-attachments/assets/2c82e2bf-41bc-4658-bcc9-d95c9b13667e" />
+<img width="1179" height="2416" alt="image" src="https://github.com/user-attachments/assets/4efbfc25-a64f-4ec3-978e-5f578a5cc9b3" />
+<img width="1179" height="1260" alt="image" src="https://github.com/user-attachments/assets/da9f17af-6f7e-41cf-9f6a-edb4788a50e7" />
+<img width="1179" height="360" alt="image" src="https://github.com/user-attachments/assets/30474382-1a50-47ed-933e-2e1cd96fbb78" />
