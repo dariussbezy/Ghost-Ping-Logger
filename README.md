@@ -38,5 +38,3 @@ https://github.com/dariussbezy/Advanced-Message-Logger/
 <img width="919" height="786" alt="image" src="https://github.com/user-attachments/assets/430528e9-04c8-473a-b11d-137ad7f586a3" />
 <img width="1179" height="2404" alt="image" src="https://github.com/user-attachments/assets/2c82e2bf-41bc-4658-bcc9-d95c9b13667e" />
 <img width="1179" height="2416" alt="image" src="https://github.com/user-attachments/assets/4efbfc25-a64f-4ec3-978e-5f578a5cc9b3" />
-<img width="1179" height="1260" alt="image" src="https://github.com/user-attachments/assets/da9f17af-6f7e-41cf-9f6a-edb4788a50e7" />
-<img width="1179" height="360" alt="image" src="https://github.com/user-attachments/assets/30474382-1a50-47ed-933e-2e1cd96fbb78" />
