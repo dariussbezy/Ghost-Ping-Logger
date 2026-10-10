@@ -6,8 +6,6 @@
   const { FluxDispatcher, React, ReactNative: RN } = metro.common;
 
   const MAX_PINGS = 200;
-  const MAX_EDITED = 200;
-  const MAX_EDIT_VERSIONS = 5;
   const DEFAULT_RECENT_MESSAGES = 200;
   const MIN_RECENT_MESSAGES = 100;
   const MAX_RECENT_MESSAGES = 20000;
@@ -17,7 +15,6 @@
   const PAGE = 40;
   const DAY = 86400000;
   const RED = "#ED4245";
-  const GREY = "#80848E";
   const INLINE = new Set(["text", "strong", "em", "u", "s", "inlineCode"]);
   const KINDS = { dm: "DM", reply: "Reply", mention: "Mention" };
 
@@ -26,7 +23,6 @@
   let pings = [];
   const recentMessages = new Map();
   const retainedPings = new Map();
-  const editHistory = new Map();
   let MessageStore;
   let UserStore;
   let ChannelStore;
@@ -53,19 +49,6 @@
       return !!(bridge && bridge.active && typeof bridge.ownsDeletedMessage === "function" && bridge.ownsDeletedMessage(id));
     } catch (_) { return false; }
   }
-  function amlOwnsEditedMessage(id) {
-    try {
-      const bridge = globalThis[AML_BRIDGE_KEY];
-      return !!(bridge && bridge.active && typeof bridge.ownsEditedMessage === "function" && bridge.ownsEditedMessage(id));
-    } catch (_) { return false; }
-  }
-  function amlNotifiesDMEdit(channelId) {
-    try {
-      const bridge = globalThis[AML_BRIDGE_KEY];
-      return !!(bridge && bridge.active && typeof bridge.notifiesDMEdit === "function" && bridge.notifiesDMEdit(channelId));
-    } catch (_) { return false; }
-  }
-
   function fmtTime(ms) {
     const d = new Date(ms);
     const p = (n) => (n < 10 ? "0" : "") + n;
@@ -207,7 +190,7 @@
       closeSettingsAlert();
       if (typeof props.onSave === "function") props.onSave(count);
     };
-    return React.createElement(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 22, borderRadius: 22, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
+    return React.createElement(RN.View, { style: { width: "92%", maxWidth: 440, alignSelf: "center", padding: 18, borderRadius: 22, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
       React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Maximum cached messages"),
       React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "All Channels mode only. Higher values use more memory. Keeps messages Discord sends or loads while Kettu runs; no history is fetched."),
       React.createElement(RN.TextInput, { value, onChangeText: (next) => { setValue(next); setError(""); }, keyboardType: "number-pad", accessibilityLabel: "Maximum cached messages", style: { minHeight: 48, paddingHorizontal: 14, borderRadius: 14, color: colors.text, fontSize: 17, backgroundColor: "rgba(128,128,128,0.16)" } }),
@@ -309,7 +292,6 @@
     if (!me || !msg || !msg.author || msg.author.id === me) return null;
     if (s.skipBots && msg.author.bot) return null;
     let kind = null;
-    if (s.pingDMs && isDM(getChannel(channelId))) kind = "dm";
     if (!kind && s.pingReplies && isReplyToMe(msg, channelId, me)) kind = "reply";
     if (!kind && s.pingMentions && mentionsMe(msg, me)) kind = "mention";
     return kind;
@@ -330,23 +312,6 @@
       id: msg.id, c: channelId, g: guildId || null, ai: msg.author.id, an: nameOf(msg.author),
       t: clip(msg.content, MAX_SNIPPET), k: kind, at: Date.now(),
     });
-  }
-
-  function rememberEdit(message) {
-    if (!cfg().logEdited || !message || !message.id || typeof message.content !== "string") return;
-    const old = getKnownMessage(message.channel_id || message.channelId, message.id);
-    if (!old || typeof old.content !== "string" || !old.content || old.content === message.content) return;
-    const authorId = (message.author && message.author.id) || (old.author && old.author.id);
-    if (authorId && authorId === myId()) return;
-    let record = editHistory.get(String(message.id));
-    if (!record) record = { id: String(message.id), c: String(message.channel_id || message.channelId), g: message.guild_id || message.guildId || null, an: nameOf(old.author), previous: [] };
-    record.previous.push({ t: clip(old.content, MAX_SNIPPET), at: Date.now() });
-    if (record.previous.length > MAX_EDIT_VERSIONS) record.previous.shift();
-    record.current = clip(message.content, MAX_SNIPPET);
-    editHistory.delete(String(message.id));
-    editHistory.set(String(message.id), record);
-    while (editHistory.size > MAX_EDITED) editHistory.delete(editHistory.keys().next().value);
-    if (cfg().notifyEdited && isDM(getChannel(record.c)) && !amlNotifiesDMEdit(record.c)) toast("Edited message from " + record.an + ": " + clip(record.current, 80));
   }
 
   function handle(channelId, guildId, ids, retainForFallback) {
@@ -432,15 +397,12 @@
   }
 
   const isOurs = (n) => !!n && typeof n === "object" && n.__gpl === 1;
-  const ours = (nodes) => { for (const n of nodes) { try { if (n && typeof n === "object") n.__gpl = 1; } catch (_) {} } return nodes; };
-
   function decorate(row, input) {
     if (!row || !row.message) return;
     const message = row.message;
     if ((input && input.rowType !== undefined ? input.rowType : row.rowType) !== 1) return;
     const ping = retainedPings.has(String(message.id)) && !amlOwnsDeletedMessage(message.id);
-    const edit = cfg().logEdited && !amlOwnsEditedMessage(message.id) ? editHistory.get(String(message.id)) : null;
-    if (!ping && !edit) {
+    if (!ping) {
       if (message.__gplOut && message.content === message.__gplOut) message.content = message.__gplBase;
       else if (Array.isArray(message.content) && message.content.some(isOurs)) message.content = message.content.filter((n) => !isOurs(n));
       if (message.__gplNameBase) {
@@ -452,7 +414,6 @@
     }
     const processColor = RN && RN.processColor;
     const red = processColor ? processColor(RED) : null;
-    const grey = processColor ? processColor(GREY) : null;
     if (ping && processColor && red && cfg().redName !== false) {
       if (!message.__gplNameBase) message.__gplNameBase = { colorString: message.colorString, usernameColor: message.usernameColor };
       message.colorString = red;
@@ -466,18 +427,10 @@
     let base = message.__gplOut && message.content === message.__gplOut ? message.__gplBase : message.content;
     if (Array.isArray(base) && base.some(isOurs)) base = base.filter((n) => !isOurs(n));
     if (Array.isArray(base)) {
-      let out = ping && red ? paint(base, red) : base;
-      if (edit && grey) {
-        const previous = [];
-        for (const version of edit.previous) previous.push(...ours(paint([{ type: "text", content: version.t + "\n" }], grey)));
-        out = previous.concat(out);
-      }
+      const out = ping && red ? paint(base, red) : base;
       message.__gplBase = base;
       message.__gplOut = out;
       message.content = out;
-    }
-    if (!ping && edit && processColor && grey && !row.backgroundHighlight) {
-      row.backgroundHighlight = { backgroundColor: processColor(GREY + "14"), gutterColor: processColor(GREY + "80") };
     }
   }
 
@@ -501,7 +454,7 @@
     try {
       if (e.loggerRemoval) return;
       if (e.type === "MESSAGE_CREATE") rememberMessage(e.message);
-      else if (e.type === "MESSAGE_UPDATE") { rememberEdit(e.message); rememberMessage(e.message); }
+      else if (e.type === "MESSAGE_UPDATE") rememberMessage(e.message);
       else if (e.type === "LOAD_MESSAGES_SUCCESS" || e.type === "LOAD_MESSAGES_SUCCESS_CACHED" || e.type === "LOAD_RECENT_MENTIONS_SUCCESS" ||
         e.type === "LOAD_PINNED_MESSAGES_SUCCESS" || e.type === "SEARCH_FINISH") harvest(e, 0);
       else if (e.type === "MESSAGE_DELETE") {
@@ -536,20 +489,6 @@
   function removePing(id) {
     pings = pings.filter((p) => p.id !== id);
     save();
-  }
-
-  function removeEdit(id) {
-    const record = editHistory.get(String(id));
-    editHistory.delete(String(id));
-    if (!record) return;
-    const msg = getMessage(record.c, String(id));
-    if (!msg) return;
-    const guildId = record.g || guildOf(record.c);
-    setTimeout(() => {
-      try {
-        FluxDispatcher.dispatch({ type: "MESSAGE_UPDATE", guildId, message: { id: msg.id, channel_id: record.c, guild_id: guildId, flags: (msg.flags | 0) ^ 0x20000000 } });
-      } catch (_) {}
-    }, 0);
   }
 
   function jumpTo(channelId, guildId, messageId, navigation) {
@@ -706,6 +645,16 @@
   function Settings() {
     vstorage.useProxy(plugin.storage);
     const [screen, setScreen] = React.useState("main");
+    const AnimatedScrollView = RN.Animated && RN.Animated.ScrollView;
+    const screenFade = React.useRef(AnimatedScrollView ? new RN.Animated.Value(1) : null).current;
+    React.useEffect(() => {
+      if (!screenFade || !RN.Animated || typeof RN.Animated.timing !== "function") return;
+      screenFade.setValue(0);
+      const animation = RN.Animated.timing(screenFade, { toValue: 1, duration: 110, useNativeDriver: true });
+      animation.start();
+      return () => animation.stop();
+    }, [screen]);
+    const screenStyle = screenFade ? { opacity: screenFade, transform: [{ translateY: screenFade.interpolate({ inputRange: [0, 1], outputRange: [3, 0] }) }] } : undefined;
     const [limit, setLimit] = React.useState(PAGE);
     const [, bump] = React.useState(0);
     let settingsNavigation = null;
@@ -821,7 +770,7 @@
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
     const captureModeLabel = () => cfg().captureMode === "expanded" ? "All Channels" : "Loaded Only";
     const captureModeDescription = () => cfg().captureMode === "expanded"
-      ? "Higher memory use; also checks messages from channels you have not opened"
+      ? "Higher memory use; captures messages Discord delivers from channels you have not opened. Does not fetch channel history."
       : "Lowest resource use; check only messages already loaded by Discord";
     const cycleCaptureMode = () => {
       cfg().captureMode = cfg().captureMode === "expanded" ? "loaded" : "expanded";
@@ -883,64 +832,38 @@
           }));
       });
       if (pings.length > limit) content.push(Btn("more", "Show more", () => setLimit(limit + PAGE)));
-    } else if (screen === "edits") {
-      const entries = [...editHistory.values()].reverse();
-      content = [
-        Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
-        Title("edits-title", "Edited messages (" + entries.length + ")"),
-      ];
-      if (!entries.length) content.push(Empty("edits-empty", "No edited messages tracked in this session."));
-      entries.slice(0, limit).forEach(function (entry) {
-        const id = String(entry.id);
-        const channelId = String(entry.c || "");
-        const guildId = entry.g || null;
-        const versions = entry.previous.map((version, index) => "Version " + (index + 1) + ":\n" + version.t).join("\n\n");
-        content.push(PressRow("edited-" + id, clip(entry.current, 160) || "(no text)",
-          (entry.an || "Unknown") + " · " + channelLabel(channelId, guildId), () => {
-            ask("Edit history · " + (entry.an || "Unknown"), clip(versions + "\n\nCurrent:\n" + (entry.current || ""), 3000), [
-              { text: "Jump to message", onPress: () => jumpTo(channelId, guildId, id, settingsNavigation) },
-              { text: "Remove", style: "destructive", onPress: () => { removeEdit(id); refreshUI(); } },
-            ]);
-          }));
-      });
-      if (entries.length > limit) content.push(Btn("more-edits", "Show more", () => setLimit(limit + PAGE)));
     } else {
       content = [
         Section("Detection"),
         Switch("enabled", "Ghost ping logger", "Notify when a message that pinged you gets deleted"),
         Switch("pingMentions", "Mentions", "Messages that mentioned you"),
         Switch("pingReplies", "Replies", "Replies to your messages"),
-        Switch("pingDMs", "Direct messages", "Every deleted message in your DMs"),
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
-        Switch("logEdited", "Track edited messages", "Keep recent previous versions while this plugin is active"),
-        Switch("notifyEdited", "Notify about edits", "Show a toast for edited messages in DMs only"),
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
         PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
         PressRow("cache-limit", "Maximum cached messages", "All Channels mode only · held in memory", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
-        PressRow("nav-edits", "Edited messages", editHistory.size + " this session", () => { setLimit(PAGE); setScreen("edits"); }, ">"),
         PressRow("retention", "Keep history for", "Older entries are removed automatically", cycleRetention, retentionLabel()),
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
     content.unshift(screen === "main" ? Header("Ghost Ping Logger", "Know when a message that pinged you gets deleted") : buildTag());
-    return h(RN.ScrollView, { key: screen, contentContainerStyle: { paddingBottom: 40 } }, ...compose(content));
+    return h(AnimatedScrollView || RN.ScrollView, { key: screen, style: screenStyle, contentContainerStyle: { paddingBottom: 40 } }, ...compose(content));
   }
 
   function onLoad() {
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, pingReplies: true, pingDMs: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, logEdited: true, notifyEdited: false, redName: true };
+    const defaults = { enabled: true, pingMentions: true, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, redName: true };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
     if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
     if (!loadStores()) { toast("Ghost Ping Logger: required Discord modules not found"); return; }
     recentMessages.clear();
     retainedPings.clear();
-    editHistory.clear();
     try { pings = Array.isArray(s.pings) ? JSON.parse(JSON.stringify(s.pings)) : []; } catch (_) { pings = []; }
     if (purge()) save();
 
@@ -970,7 +893,6 @@
     lastSettingsNavigation = null;
     recentMessages.clear();
     retainedPings.clear();
-    editHistory.clear();
     pings = [];
   }
 
