@@ -10,9 +10,9 @@
   const MAX_EDIT_VERSIONS = 5;
   const DEFAULT_RECENT_MESSAGES = 200;
   const MIN_RECENT_MESSAGES = 100;
-  const MAX_RECENT_MESSAGES = 5000;
+  const MAX_RECENT_MESSAGES = 20000;
   const MAX_SNIPPET = 300;
-  const BUILD = "v1.0.0";
+  const BUILD = "v1.1.0";
   const GPL_ALERT_BRIDGE_KEY = "__ghost_ping_logger_aml_bridge_v1__";
   const PAGE = 40;
   const DAY = 86400000;
@@ -92,6 +92,7 @@
     const channelId = message.channel_id || message.channelId;
     if (!channelId) return;
     const previous = recentMessages.get(message.id);
+    if (!previous && !(message.author && typeof message.author === "object")) return;
     const merged = previous ? { ...previous, ...message } : message;
     const reference = merged.messageReference || merged.message_reference || merged.reference;
     const embedded = merged.referencedMessage && (merged.referencedMessage.message || merged.referencedMessage) || merged.referenced_message;
@@ -124,6 +125,17 @@
     if (!Number.isFinite(value)) return DEFAULT_RECENT_MESSAGES;
     return Math.max(MIN_RECENT_MESSAGES, Math.min(MAX_RECENT_MESSAGES, Math.round(value)));
   }
+  // Collects every full message from an event payload (single message, lists, nested lists
+  // such as search results, or pin entries) into the all-channels cache.
+  function harvest(value, depth) {
+    if (!value || typeof value !== "object" || depth > 3) return;
+    if (Array.isArray(value)) { for (const v of value) harvest(v, depth + 1); return; }
+    if (typeof value.id === "string" && value.author && typeof value.author === "object") { rememberMessage(value); return; }
+    harvest(value.message, depth + 1);
+    harvest(value.messages, depth + 1);
+    harvest(value.pins, depth + 1);
+  }
+
   function getKnownMessage(channelId, id) {
     const cached = getMessage(channelId, id);
     if (cached) return cached;
@@ -197,7 +209,7 @@
     };
     return React.createElement(RN.View, { style: { width: "100%", maxWidth: 440, alignSelf: "center", padding: 20, borderRadius: 14, backgroundColor: colors.text === "#FFFFFF" ? "#2B2D31" : "#FFFFFF" } },
       React.createElement(RN.Text, { style: { color: colors.text, fontSize: 20, fontWeight: "700", marginBottom: 8 } }, "Maximum cached messages"),
-      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "Expanded Cache only. Higher values use more memory. Incoming messages only; no history is fetched."),
+      React.createElement(RN.Text, { style: { color: colors.sub, fontSize: 14, marginBottom: 16 } }, "All Channels mode only. Higher values use more memory. Keeps messages Discord sends or loads while Kettu runs; no history is fetched."),
       React.createElement(RN.TextInput, { value, onChangeText: (next) => { setValue(next); setError(""); }, keyboardType: "number-pad", accessibilityLabel: "Maximum cached messages", style: { minHeight: 48, paddingHorizontal: 12, borderRadius: 8, color: colors.text, fontSize: 17, backgroundColor: "rgba(128,128,128,0.16)" } }),
       error ? React.createElement(RN.Text, { style: { color: RED, fontSize: 13, marginTop: 8 } }, error) : null,
       React.createElement(RN.View, { style: { flexDirection: "row", justifyContent: "flex-end", marginTop: 18 } },
@@ -494,6 +506,8 @@
       if (e.loggerRemoval) return;
       if (e.type === "MESSAGE_CREATE") rememberMessage(e.message);
       else if (e.type === "MESSAGE_UPDATE") { rememberEdit(e.message); rememberMessage(e.message); }
+      else if (e.type === "LOAD_MESSAGES_SUCCESS" || e.type === "LOAD_MESSAGES_SUCCESS_CACHED" || e.type === "LOAD_RECENT_MENTIONS_SUCCESS" ||
+        e.type === "LOAD_PINNED_MESSAGES_SUCCESS" || e.type === "SEARCH_FINISH") harvest(e, 0);
       else if (e.type === "MESSAGE_DELETE") {
         const result = onDelete(e);
         if (result) args[0] = result;
@@ -726,9 +740,9 @@
       h(RN.View, { key, style: { paddingHorizontal: 16, paddingVertical: 6 } }, h(RN.Button, { title, onPress, color }));
 
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
-    const captureModeLabel = () => cfg().captureMode === "expanded" ? "Expanded Cache" : "Loaded Only";
+    const captureModeLabel = () => cfg().captureMode === "expanded" ? "All Channels" : "Loaded Only";
     const captureModeDescription = () => cfg().captureMode === "expanded"
-      ? "Higher memory use; retain incoming messages from channels you have not opened"
+      ? "Higher memory use; also checks messages from channels you have not opened"
       : "Lowest resource use; check only messages already loaded by Discord";
     const cycleCaptureMode = () => {
       cfg().captureMode = cfg().captureMode === "expanded" ? "loaded" : "expanded";
@@ -828,7 +842,7 @@
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
         PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
-        PressRow("cache-limit", "Maximum cached messages", "Expanded Cache only · held in memory", editRecentMessageLimit, String(recentMessageLimit())),
+        PressRow("cache-limit", "Maximum cached messages", "All Channels mode only · held in memory", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
         PressRow("nav-edits", "Edited messages", editHistory.size + " this session", () => { setLimit(PAGE); setScreen("edits"); }, ">"),
