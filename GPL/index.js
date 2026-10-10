@@ -122,9 +122,21 @@
   function getKnownMessage(channelId, id) {
     const cached = getMessage(channelId, id);
     if (cached) return cached;
-    if (cfg().captureMode !== "expanded") return null;
-    const recent = recentMessages.get(String(id));
-    return recent && String(recent.channel_id) === String(channelId) ? recent : null;
+    if (cfg().captureMode === "expanded") {
+      const recent = recentMessages.get(String(id));
+      if (recent && String(recent.channel_id) === String(channelId)) return recent;
+    }
+    // AML may have received this message through a client event path that did
+    // not populate GPL's own cache. Use that cache only as an optional fallback;
+    // GPL's local MessageStore/recentMessages remain sufficient when AML is off.
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      if (bridge && bridge.active && typeof bridge.getKnownMessage === "function") {
+        const shared = bridge.getKnownMessage(channelId, id);
+        if (shared && (!shared.channel_id || String(shared.channel_id) === String(channelId))) return shared;
+      }
+    } catch (_) {}
+    return null;
   }
   const getChannel = (id) => { try { return id ? ChannelStore.getChannel(id) : null; } catch (_) { return null; } };
   const guildOf = (c) => { const ch = getChannel(c); return ch && ch.guild_id ? ch.guild_id : null; };
