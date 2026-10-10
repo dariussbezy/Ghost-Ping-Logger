@@ -10,7 +10,7 @@
   const MIN_RECENT_MESSAGES = 100;
   const MAX_RECENT_MESSAGES = 20000;
   const MAX_SNIPPET = 300;
-  const BUILD = "v1.1.0";
+  const BUILD = "v2.0.0";
   const GPL_ALERT_BRIDGE_KEY = "__ghost_ping_logger_aml_bridge_v1__";
   const PAGE = 40;
   const DAY = 86400000;
