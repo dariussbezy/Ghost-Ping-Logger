@@ -679,9 +679,11 @@
     const refreshUI = () => bump((x) => x + 1);
     const C = palette();
     const h = React.createElement;
+    const F = ui.components && ui.components.Forms;
 
     const rowSet = new WeakSet();
     const mark = (el) => { rowSet.add(el); return el; };
+    const sectionTitles = new WeakMap();
     const HEXCOLOR = /^#[0-9A-Fa-f]{6}$/;
     const Text = (props, ...kids) => h(RN.Text, props, ...kids);
     const rowStyle = ({ pressed }) => ({ paddingHorizontal: 16, paddingVertical: 13, minHeight: 56, flexDirection: "row", alignItems: "center", backgroundColor: pressed ? C.press : "transparent" });
@@ -689,9 +691,11 @@
       Text({ style: { color: C.text, fontSize: 16, fontWeight: "500" }, numberOfLines: 4 }, label),
       sub ? Text({ style: { color: C.sub, fontSize: 13, lineHeight: 18, marginTop: 2 }, numberOfLines: 4 }, sub) : null);
 
-    const Section = (title) =>
-      h(RN.View, { key: "sec-" + title, style: { paddingHorizontal: 30, paddingTop: 24, paddingBottom: 6 } },
-        Text({ style: { color: C.acc, fontSize: 12, fontWeight: "700", letterSpacing: 0.8 } }, title.toUpperCase()));
+    const Section = (title) => {
+      const marker = h(RN.View, { key: "sec-" + title });
+      sectionTitles.set(marker, title);
+      return marker;
+    };
 
     const valueChip = (right, rightColor) => {
       if (!right) return null;
@@ -707,15 +711,19 @@
     };
 
     const PressRow = (key, label, sub, onPress, right, rightColor) => mark(
-      h(RN.Pressable, { key, onPress, accessibilityRole: "button", style: rowStyle },
-        rowText(label, sub), valueChip(right, rightColor)));
+      F && typeof F.FormRow === "function"
+        ? h(F.FormRow, { key, label, subLabel: sub, onPress, trailing: valueChip(right, rightColor) })
+        : h(RN.Pressable, { key, onPress, accessibilityRole: "button", style: rowStyle },
+          rowText(label, sub), valueChip(right, rightColor)));
 
     const switchRow = (key, label, sub, value, change) => mark(
-      h(RN.Pressable, { key, onPress: () => change(!value), style: rowStyle },
-        h(RN.View, { style: { flex: 1, paddingRight: 12 } },
-          Text({ style: { color: C.text, fontSize: 16, fontWeight: "500" } }, label),
-          sub ? Text({ style: { color: C.sub, fontSize: 13, lineHeight: 18, marginTop: 2 } }, sub) : null),
-        h(RN.Switch, { value, onValueChange: change, trackColor: { false: C.off, true: C.blurple }, thumbColor: "#FFFFFF", ios_backgroundColor: C.off })));
+      F && typeof F.FormSwitchRow === "function"
+        ? h(F.FormSwitchRow, { key, label, subLabel: sub, value, onValueChange: change })
+        : h(RN.Pressable, { key, onPress: () => change(!value), accessibilityRole: "button", style: rowStyle },
+          h(RN.View, { style: { flex: 1, paddingRight: 12 } },
+            Text({ style: { color: C.text, fontSize: 16, fontWeight: "500" } }, label),
+            sub ? Text({ style: { color: C.sub, fontSize: 13, lineHeight: 18, marginTop: 2 } }, sub) : null),
+          h(RN.Switch, { value, onValueChange: change, trackColor: { false: C.off, true: C.blurple }, thumbColor: "#FFFFFF", ios_backgroundColor: C.off })));
 
     const Btn = (key, title, onPress, color) => {
       if (key === "back") {
@@ -755,18 +763,36 @@
     const compose = (list) => {
       const out = [];
       let run = [];
+      let title = null;
+      let groupIndex = 0;
+      const nativeSections = F && typeof F.FormSection === "function";
+      const sectionHeader = (name) => h(RN.View, { key: "sec-title-" + groupIndex++, style: { paddingHorizontal: 30, paddingTop: 24, paddingBottom: 6 } },
+        Text({ style: { color: C.acc, fontSize: 12, fontWeight: "700", letterSpacing: 0.8 } }, name.toUpperCase()));
       const flush = () => {
-        if (!run.length) return;
+        if (!run.length) {
+          if (title) out.push(sectionHeader(title));
+          title = null;
+          return;
+        }
+        if (nativeSections) {
+          out.push(h(F.FormSection, { key: "form-section-" + groupIndex++, title: title || undefined }, ...run));
+          run = [];
+          title = null;
+          return;
+        }
         const kids = [];
         run.forEach((r, i) => {
           if (i) kids.push(h(RN.View, { key: "div-" + r.key, style: { height: 1, backgroundColor: C.divider, marginLeft: 16 } }));
           kids.push(r);
         });
+        if (title) out.push(sectionHeader(title));
         out.push(h(RN.View, { key: "card-" + out.length, style: { marginHorizontal: 16, marginTop: 4, borderRadius: 16, backgroundColor: C.card2, overflow: "hidden" } }, ...kids));
         run = [];
+        title = null;
       };
       for (const el of list) {
-        if (el && rowSet.has(el)) run.push(el);
+        if (el && sectionTitles.has(el)) { flush(); title = sectionTitles.get(el); }
+        else if (el && rowSet.has(el)) run.push(el);
         else { flush(); if (el) out.push(el); }
       }
       flush();
