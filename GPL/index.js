@@ -243,14 +243,19 @@
   }
 
   function showPingAlert(entry) {
-    try {
-      if (ui.alerts && typeof ui.alerts.showCustomAlert === "function") {
-        ui.alerts.showCustomAlert(GhostPingAlert, { entry });
-        return;
-      }
-    } catch (_) {}
     const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
-    toast("Ghost ping: " + entry.an + " " + what);
+    const isTest = String(entry.id).startsWith("test-");
+    const buttons = [];
+    if (!isTest) buttons.push({ text: "Dismiss", style: "cancel" });
+    buttons.push({ text: isTest ? "Close" : "Jump to message", onPress: () => {
+      if (!isTest) setTimeout(() => jumpTo(entry.c, entry.g, entry.id, lastSettingsNavigation), 180);
+    } });
+    const message = String(entry.an || "Unknown") + " " + what + ":\n\n" + (entry.t || "(no message text)");
+    try {
+      RN.Alert.alert("Ghost ping", message, buttons, { cancelable: true });
+    } catch (_) {
+      toast("Ghost ping: " + entry.an + " " + what);
+    }
   }
 
   function purge() {
@@ -654,19 +659,29 @@
       : { text: "#FFFFFF", sub: "#B5BAC1", acc: "#8EA1FF", blurple: "#5865F2", card2: "rgba(255,255,255,0.06)", chip: "rgba(255,255,255,0.10)", press: "rgba(255,255,255,0.07)", divider: "rgba(255,255,255,0.09)", off: "#4E5058" };
   }
 
+  function settingsFormComponent(name) {
+    let formModule = null;
+    try { formModule = findByProps("Form", "FormSection"); } catch (_) {}
+    const direct = (formModule && formModule[name]) || (ui.components && ui.components.Forms && ui.components.Forms[name]);
+    if (typeof direct === "function" || direct && typeof direct === "object") return direct;
+    try {
+      const module = findByProps(name);
+      const component = module && module[name];
+      if (typeof component === "function" || component && typeof component === "object") return component;
+    } catch (_) {}
+    for (const searchExports of [false, true]) {
+      try {
+        const found = findByName(name, searchExports);
+        const component = found && (found.default || found[name] || found);
+        if (typeof component === "function" || component && typeof component === "object") return component;
+      } catch (_) {}
+    }
+    return null;
+  }
+
   function Settings() {
     vstorage.useProxy(plugin.storage);
     const [screen, setScreen] = React.useState("main");
-    const AnimatedScrollView = RN.Animated && RN.Animated.ScrollView;
-    const screenFade = React.useRef(AnimatedScrollView ? new RN.Animated.Value(1) : null).current;
-    React.useEffect(() => {
-      if (!screenFade || !RN.Animated || typeof RN.Animated.timing !== "function") return;
-      screenFade.setValue(0);
-      const animation = RN.Animated.timing(screenFade, { toValue: 1, duration: 110, useNativeDriver: true });
-      animation.start();
-      return () => animation.stop();
-    }, [screen]);
-    const screenStyle = screenFade ? { opacity: screenFade, transform: [{ translateY: screenFade.interpolate({ inputRange: [0, 1], outputRange: [3, 0] }) }] } : undefined;
     const [limit, setLimit] = React.useState(PAGE);
     const [, bump] = React.useState(0);
     let settingsNavigation = null;
@@ -679,7 +694,12 @@
     const refreshUI = () => bump((x) => x + 1);
     const C = palette();
     const h = React.createElement;
-    const F = ui.components && ui.components.Forms;
+    const F = {
+      FormSection: settingsFormComponent("FormSection"),
+      FormRow: settingsFormComponent("FormRow"),
+      FormSwitchRow: settingsFormComponent("FormSwitchRow"),
+      FormDivider: settingsFormComponent("FormDivider"),
+    };
 
     const rowSet = new WeakSet();
     const mark = (el) => { rowSet.add(el); return el; };
@@ -711,13 +731,13 @@
     };
 
     const PressRow = (key, label, sub, onPress, right, rightColor) => mark(
-      F && typeof F.FormRow === "function"
+      F && F.FormRow
         ? h(F.FormRow, { key, label, subLabel: sub, onPress, trailing: valueChip(right, rightColor) })
         : h(RN.Pressable, { key, onPress, accessibilityRole: "button", style: rowStyle },
           rowText(label, sub), valueChip(right, rightColor)));
 
     const switchRow = (key, label, sub, value, change) => mark(
-      F && typeof F.FormSwitchRow === "function"
+      F && F.FormSwitchRow
         ? h(F.FormSwitchRow, { key, label, subLabel: sub, value, onValueChange: change })
         : h(RN.Pressable, { key, onPress: () => change(!value), accessibilityRole: "button", style: rowStyle },
           h(RN.View, { style: { flex: 1, paddingRight: 12 } },
@@ -726,38 +746,14 @@
           h(RN.Switch, { value, onValueChange: change, trackColor: { false: C.off, true: C.blurple }, thumbColor: "#FFFFFF", ios_backgroundColor: C.off })));
 
     const Btn = (key, title, onPress, color) => {
-      if (key === "back") {
-        return h(RN.View, { key, style: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2, flexDirection: "row" } },
-          h(RN.Pressable, { onPress, accessibilityRole: "button", style: ({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 20, backgroundColor: pressed ? C.press : C.chip }) },
-            Text({ style: { color: C.text, fontSize: 15, fontWeight: "600" } }, "\u2039  Back")));
-      }
-      const danger = color === RED;
-      return h(RN.View, { key, style: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 } },
-        h(RN.Pressable, {
-          onPress, accessibilityRole: "button",
-          style: ({ pressed }) => ({ minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: danger ? (pressed ? "rgba(237,66,69,0.30)" : "rgba(237,66,69,0.16)") : (pressed ? C.press : C.chip) }),
-        }, Text({ style: { color: danger ? RED : C.text, fontSize: 15, fontWeight: "700" } }, title)));
+      const label = key === "back" ? "‹  Back" : title;
+      if (F.FormRow) return mark(h(F.FormRow, { key, label, onPress }));
+      return mark(h(RN.Pressable, { key, onPress, accessibilityRole: "button", style: rowStyle }, rowText(label, null)));
     };
 
-    const Empty = (key, text) =>
-      h(RN.View, { key, style: { marginHorizontal: 16, marginTop: 12, padding: 24, borderRadius: 16, backgroundColor: C.card2, alignItems: "center" } },
-        Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20, textAlign: "center" } }, text));
+    const Empty = (key, text) => Text({ key, style: { color: C.sub, fontSize: 14, lineHeight: 20, paddingHorizontal: 16, paddingVertical: 12 } }, text);
 
-    const Title = (key, text) =>
-      h(RN.View, { key, style: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4 } },
-        Text({ style: { color: C.text, fontSize: 24, fontWeight: "700" } }, text));
-
-    const Header = (title, subtitle) =>
-      h(RN.View, { key: "build", style: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 2 } },
-        Text({ style: { color: C.text, fontSize: 28, fontWeight: "800" } }, title),
-        h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginTop: 8, flexWrap: "wrap" } },
-          h(RN.View, { style: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: C.chip, marginRight: 10 } },
-            Text({ style: { color: C.sub, fontSize: 11, fontWeight: "700" } }, "Build " + BUILD)),
-          Text({ style: { color: C.sub, fontSize: 13, flexShrink: 1 } }, subtitle)));
-
-    const buildTag = () =>
-      h(RN.View, { key: "build", style: { paddingHorizontal: 20, paddingTop: 8 } },
-        Text({ style: { color: C.sub, fontSize: 11 } }, "Build " + BUILD));
+    const Title = (key, text) => Text({ key, style: { color: C.text, fontSize: 20, fontWeight: "700", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 } }, text);
 
     // Rows that sit next to each other are grouped into one rounded card with dividers.
     const compose = (list) => {
@@ -765,7 +761,7 @@
       let run = [];
       let title = null;
       let groupIndex = 0;
-      const nativeSections = F && typeof F.FormSection === "function";
+      const nativeSections = F && F.FormSection;
       const sectionHeader = (name) => h(RN.View, { key: "sec-title-" + groupIndex++, style: { paddingHorizontal: 30, paddingTop: 24, paddingBottom: 6 } },
         Text({ style: { color: C.acc, fontSize: 12, fontWeight: "700", letterSpacing: 0.8 } }, name.toUpperCase()));
       const flush = () => {
@@ -775,18 +771,18 @@
           return;
         }
         if (nativeSections) {
-          out.push(h(F.FormSection, { key: "form-section-" + groupIndex++, title: title || undefined }, ...run));
+          const nativeRows = [];
+          run.forEach((row, index) => {
+            if (index && F.FormDivider) nativeRows.push(h(F.FormDivider, { key: "form-divider-" + groupIndex++ }));
+            nativeRows.push(row);
+          });
+          out.push(h(F.FormSection, { key: "form-section-" + groupIndex++, title: title || undefined }, ...nativeRows));
           run = [];
           title = null;
           return;
         }
-        const kids = [];
-        run.forEach((r, i) => {
-          if (i) kids.push(h(RN.View, { key: "div-" + r.key, style: { height: 1, backgroundColor: C.divider, marginLeft: 16 } }));
-          kids.push(r);
-        });
         if (title) out.push(sectionHeader(title));
-        out.push(h(RN.View, { key: "card-" + out.length, style: { marginHorizontal: 16, marginTop: 4, borderRadius: 16, backgroundColor: C.card2, overflow: "hidden" } }, ...kids));
+        out.push(...run);
         run = [];
         title = null;
       };
@@ -816,14 +812,24 @@
       refreshUI();
     };
     const editRecentMessageLimit = () => {
+      const saveLimit = (value) => {
+        const count = Number(String(value || "").trim());
+        if (!Number.isInteger(count) || count < MIN_RECENT_MESSAGES || count > MAX_RECENT_MESSAGES) {
+          ask("Invalid message limit", "Enter a whole number from " + MIN_RECENT_MESSAGES + " to " + MAX_RECENT_MESSAGES + ".", [{ text: "OK" }]);
+          return;
+        }
+        cfg().maxCachedMessages = count;
+        while (recentMessages.size > count) recentMessages.delete(recentMessages.keys().next().value);
+        refreshUI();
+      };
+      if (RN.Alert && typeof RN.Alert.prompt === "function") {
+        RN.Alert.prompt("Maximum cached messages", "All Channels mode only. Higher values use more memory.", saveLimit, "plain-text", String(recentMessageLimit()), "number-pad");
+        return;
+      }
       try {
         ui.alerts.showCustomAlert(MessageCacheLimitModal, {
           initialValue: recentMessageLimit(),
-          onSave: (count) => {
-            cfg().maxCachedMessages = count;
-            while (recentMessages.size > count) recentMessages.delete(recentMessages.keys().next().value);
-            refreshUI();
-          },
+          onSave: saveLimit,
         });
       } catch (_) { toast("Could not open cache limit settings"); }
     };
@@ -889,8 +895,7 @@
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    content.unshift(screen === "main" ? Header("Ghost Ping Logger", "Know when a message that pinged you gets deleted") : buildTag());
-    return h(AnimatedScrollView || RN.ScrollView, { key: screen, style: screenStyle, contentContainerStyle: { paddingBottom: 40 } }, ...compose(content));
+    return h(RN.ScrollView, { key: screen, contentContainerStyle: { paddingBottom: 24 } }, ...compose(content));
   }
 
   function onLoad() {
