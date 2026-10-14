@@ -1,0 +1,11 @@
+{
+  "id": "gpl",
+  "name": "Ghost Ping Logger",
+  "description": "Detect ghost pings from new messages Rain delivers, remember recent messages across restarts, and more. See plugin settings.",
+  "version": "1.0.1",
+  "authors": [
+    "dariussbezy"
+  ],
+  "main": "index.js",
+  "settings": true
+}
