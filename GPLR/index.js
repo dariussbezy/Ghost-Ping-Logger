@@ -665,7 +665,21 @@ const implementation = (() => {
   }
 
   function CustomSection(p){const C=palette();return React.createElement(RN.View,{style:{marginBottom:p.compact?14:22}},p.title?React.createElement(RN.Text,{style:{color:C.sub,fontSize:13,fontWeight:"700",letterSpacing:.4,marginHorizontal:5,marginBottom:9,textTransform:"uppercase"}},p.title):null,React.createElement(RN.View,{style:{backgroundColor:C.card,borderRadius:17,overflow:"hidden",borderWidth:1,borderColor:C.card2}},p.children));}
-  function CustomRow(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:!p.onPress,style:({pressed})=>({minHeight:58,paddingHorizontal:15,paddingVertical:12,flexDirection:"row",alignItems:"center",backgroundColor:pressed?C.press:"transparent"})},p.icon?React.createElement(RN.Text,{style:{width:30,fontSize:18,color:C.sub,marginRight:7}},p.icon):null,React.createElement(RN.View,{style:{flex:1,minWidth:0,paddingRight:8}},React.createElement(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:16,fontWeight:"600"}},p.title),p.subtitle?React.createElement(RN.Text,{numberOfLines:2,style:{color:C.sub,fontSize:13,marginTop:3,lineHeight:18}},p.subtitle):null),p.trailing||null,!p.last?React.createElement(RN.View,{style:{position:"absolute",bottom:0,left:p.icon?52:15,right:0,height:1,backgroundColor:C.card2}}):null);}
+  function settingIconForTitle(title) {
+    const text = String(title || "").toLowerCase();
+    const rules = [
+        [/translate|translation|google|deepl/, "↔"], [/language/, "文"], [/color|appearance/, "◉"],
+        [/clock|time|history|retention/, "◷"], [/cache|storage|persist|remember|restart/, "▣"],
+        [/deleted|delete/, "⌫"], [/edit/, "✎"], [/ignore/, "⊘"], [/mention|everyone|ping/, "@"],
+        [/reply/, "↩"], [/filter|search/, "⌕"], [/capture|message|channel|dm/, "▤"],
+        [/alert|notify|toast/, "!"], [/button|position|composer/, "+"], [/word|term/, "Aa"],
+        [/jump/, "↗"], [/test/, "▷"], [/server|guild/, "◇"], [/bot/, "◆"],
+        [/quick|favorite|saved/, "★"], [/clear|remove/, "×"], [/enabled|logger/, "●"]
+    ];
+    const match = rules.find(([pattern]) => pattern.test(text));
+    return match ? match[1] : "•";
+}
+function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||settingIconForTitle(p.title);return h(RN.Pressable,{accessibilityRole:p.onPress?"button":undefined,onPress:p.onPress,disabled:!p.onPress,style:({pressed})=>({minHeight:58,paddingHorizontal:15,paddingVertical:12,flexDirection:"row",alignItems:"center",backgroundColor:pressed?C.press:"transparent"})},icon?h(RN.Text,{style:{width:30,fontSize:18,color:C.sub,marginRight:7,textAlign:"center"}},icon):null,h(RN.View,{style:{flex:1,minWidth:0,paddingRight:8}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:16,fontWeight:"600"}},p.title),p.subtitle?h(RN.Text,{numberOfLines:2,style:{color:C.sub,fontSize:13,marginTop:3,lineHeight:18}},p.subtitle):null),p.trailing||null,!p.last?h(RN.View,{style:{position:"absolute",bottom:0,left:icon?52:15,right:0,height:1,backgroundColor:C.card2}}):null);}
   function CustomSwitch(p){const C=palette(),on=!!p.value,pos=React.useRef(new RN.Animated.Value(on?1:0)).current;React.useEffect(()=>{RN.Animated.spring(pos,{toValue:on?1:0,speed:22,bounciness:3,useNativeDriver:true}).start();},[on]);return React.createElement(RN.Pressable,{accessibilityRole:"switch",accessibilityState:{checked:on},onPress:()=>p.onChange(!on),hitSlop:8,style:{width:48,height:29,borderRadius:16,padding:3,justifyContent:"center",backgroundColor:on?C.blurple:C.off}},React.createElement(RN.Animated.View,{style:{width:23,height:23,borderRadius:12,backgroundColor:"#FFFFFF",elevation:1,transform:[{translateX:pos.interpolate({inputRange:[0,1],outputRange:[0,19]})}]}}));}
   function CustomAction(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:p.disabled,style:({pressed})=>({minHeight:48,borderRadius:13,alignItems:"center",justifyContent:"center",paddingHorizontal:16,marginTop:9,backgroundColor:p.secondary?C.chip:C.blurple,opacity:p.disabled?0.45:pressed?0.75:1})},React.createElement(RN.Text,{style:{color:"#FFFFFF",fontWeight:"700",fontSize:16}},p.title));}
   function CustomInput(p){const C=palette();return React.createElement(RN.TextInput,{...p,placeholderTextColor:C.sub,style:[{minHeight:48,borderRadius:13,borderWidth:1,borderColor:C.off,backgroundColor:C.bg,color:C.text,paddingHorizontal:14,fontSize:16},p.style]});}
@@ -736,7 +750,7 @@ const implementation = (() => {
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
     const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:18,height:18,borderRadius:9,backgroundColor:v,borderWidth:1,borderColor:C.divider}}),Text({style:{color:C.sub,fontSize:13,marginLeft:8}},v));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
-    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:valueChip(right)}));
+    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:key==="capture-mode"?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
     const Empty=(key,t)=>Text({key,style:{color:C.sub,fontSize:14,lineHeight:20,paddingHorizontal:14,paddingVertical:14,textAlign:"center"}},t),Title=(key,t)=>Text({key,style:{color:C.text,fontSize:22,fontWeight:"800",paddingTop:8,paddingBottom:8}},t);
@@ -750,13 +764,33 @@ const implementation = (() => {
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
     const captureModeLabel = () => cfg().captureMode === "expanded" ? "All new messages" : "Loaded messages";
     const captureModeDescription = () => cfg().captureMode === "expanded"
-      ? "Save messages delivered while other chats are open."
-      : "Save messages already loaded in the open chat.";
-    const cycleCaptureMode = () => {
-      cfg().captureMode = cfg().captureMode === "expanded" ? "loaded" : "expanded";
-      if (cfg().captureMode === "loaded") clearRecentMessages();
-      if (cfg().captureMode === "loaded") { cfg().receivedMessages = []; recentArchiveDirty = false; if (recentArchiveTimer) { clearTimeout(recentArchiveTimer); recentArchiveTimer = null; } }
+      ? "Captures messages delivered outside the open chat."
+      : "Captures messages loaded in the open chat.";
+    const chooseCaptureMode = (mode) => {
+      cfg().captureMode = mode;
+      if (mode === "loaded") clearRecentMessages();
+      if (mode === "loaded") { cfg().receivedMessages = []; recentArchiveDirty = false; if (recentArchiveTimer) { clearTimeout(recentArchiveTimer); recentArchiveTimer = null; } }
       refreshUI();
+    };
+    const openCaptureModeMenu = () => {
+      const select = (mode) => {
+        chooseCaptureMode(mode);
+        try { const hide = findByProps("openLazy", "hideActionSheet"); hide && hide.hideActionSheet && hide.hideActionSheet(); } catch (_) {}
+      };
+      try {
+        const sheets = findByProps("showSimpleActionSheet");
+        if (sheets && typeof sheets.showSimpleActionSheet === "function") {
+          sheets.showSimpleActionSheet({ key: "capture-mode-selector", header: { title: "Capture mode" }, options: [
+            { label: "All new messages", isMarked: cfg().captureMode === "expanded", onPress: () => select("expanded") },
+            { label: "Loaded messages", isMarked: cfg().captureMode !== "expanded", onPress: () => select("loaded") }
+          ] });
+          return;
+        }
+      } catch (_) {}
+      ask("Capture mode", "Choose which new messages to save.", [
+        { text: "All new messages", onPress: () => select("expanded") },
+        { text: "Loaded messages", onPress: () => select("loaded") }
+      ]);
     };
     const editRecentMessageLimit = () => {
       const saveLimit = (value) => {
@@ -828,7 +862,7 @@ const implementation = (() => {
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
-        PressRow("capture-mode", "Capture mode", captureModeDescription(), cycleCaptureMode, captureModeLabel()),
+        PressRow("capture-mode", "Capture mode", captureModeDescription(), openCaptureModeMenu, captureModeLabel()),
         Switch("rememberReceivedMessages", "Remember new messages", "Save new messages received by Discord on this device across restarts.", (v) => {
           cfg().rememberReceivedMessages = v;
           if (!v) { recentArchiveIds.clear(); cfg().receivedMessages = []; recentArchiveDirty = false; if (recentArchiveTimer) { clearTimeout(recentArchiveTimer); recentArchiveTimer = null; } }
