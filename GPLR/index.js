@@ -107,6 +107,8 @@ const implementation = (() => {
         bot: !!merged.author.bot,
       } : previous && previous.author,
       mentions: Array.isArray(merged.mentions) ? merged.mentions.map((user) => typeof user === "string" ? user : user && user.id).filter(Boolean) : previous && previous.mentions || [],
+      mentionEveryone: !!(merged.mention_everyone === true || merged.mentionEveryone === true || previous && previous.mentionEveryone),
+
       mentioned: typeof merged.mentioned === "boolean" ? merged.mentioned : previous && previous.mentioned,
       messageReference: reference ? {
         message_id: reference.message_id || reference.messageId,
@@ -278,7 +280,7 @@ const implementation = (() => {
       closePingAlert();
       if (!isTest) setTimeout(() => jumpTo(entry.c, entry.g, entry.id, lastSettingsNavigation), 180);
     };
-    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
+    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
     const colors = palette();
     const h = React.createElement;
     const dark = colors.text === "#FFFFFF";
@@ -302,7 +304,7 @@ const implementation = (() => {
   }
 
   function showPingAlert(entry) {
-    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message that mentioned you";
+    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
     const isTest = String(entry.id).startsWith("test-");
     const buttons = [];
     if (!isTest) buttons.push({ text: "Dismiss", style: "cancel" });
@@ -370,6 +372,7 @@ const implementation = (() => {
     let kind = null;
     if (!kind && s.pingReplies && isReplyToMe(msg, channelId, me)) kind = "reply";
     if (!kind && s.pingMentions && mentionsMe(msg, me)) kind = "mention";
+    if (!kind && s.trackEveryone && (msg.mention_everyone === true || msg.mentionEveryone === true)) kind = "mention";
     return kind;
   }
 
@@ -635,14 +638,11 @@ const implementation = (() => {
 
   function palette() {
     let light = false;
-    try {
-      ThemeStore = ThemeStore || findByStoreName("ThemeStore");
-      light = !!ThemeStore && ThemeStore.theme === "light";
-    } catch (_) {}
+    try { ThemeStore = ThemeStore || findByStoreName("ThemeStore"); light = !!ThemeStore && ThemeStore.theme === "light"; } catch (_) {}
     return light
       ? { text: "#060607", sub: "#5C5E66", bg: "#FFFFFF", card: "#F2F3F5", acc: "#5865F2", accPressed: "#4752C4", blurple: "#5865F2", card2: "rgba(0,0,0,0.045)", chip: "rgba(0,0,0,0.07)", press: "rgba(0,0,0,0.06)", divider: "rgba(0,0,0,0.09)", off: "#B5BAC1" }
-      : { text: "#FFFFFF", sub: "#B5BAC1", bg: "#1E1F22", card: "#2B2D31", acc: "#8EA1FF", accPressed: "#788BFF", blurple: "#8EA1FF", card2: "rgba(255,255,255,0.06)", chip: "rgba(255,255,255,0.10)", press: "rgba(255,255,255,0.07)", divider: "rgba(255,255,255,0.09)", off: "#4E5058" };
-  }
+      : { text: "#FFFFFF", sub: "#B5BAC1", bg: "#1E1F22", card: "#2B2D31", acc: "#5865F2", accPressed: "#4752C4", blurple: "#5865F2", card2: "rgba(255,255,255,0.06)", chip: "rgba(255,255,255,0.10)", press: "rgba(255,255,255,0.07)", divider: "rgba(255,255,255,0.09)", off: "#4E5058" };
+}
 
   function settingsFormComponent(name) {
     let formModule = null;
@@ -665,13 +665,15 @@ const implementation = (() => {
   }
 
   function CustomSection(p){const C=palette();return React.createElement(RN.View,{style:{marginBottom:p.compact?14:22}},p.title?React.createElement(RN.Text,{style:{color:C.sub,fontSize:13,fontWeight:"700",letterSpacing:.4,marginHorizontal:5,marginBottom:9,textTransform:"uppercase"}},p.title):null,React.createElement(RN.View,{style:{backgroundColor:C.card,borderRadius:17,overflow:"hidden",borderWidth:1,borderColor:C.card2}},p.children));}
-  function CustomRow(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:!p.onPress,style:({pressed})=>({minHeight:58,paddingHorizontal:15,paddingVertical:12,flexDirection:"row",alignItems:"center",backgroundColor:pressed?C.press:"transparent"})},p.icon?React.createElement(RN.Text,{style:{width:30,fontSize:18,color:C.sub,marginRight:7,textAlign:"center"}},p.icon):null,React.createElement(RN.View,{style:{flex:1,minWidth:0,paddingRight:8}},React.createElement(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:16,fontWeight:"600"}},p.title),p.subtitle?React.createElement(RN.Text,{numberOfLines:2,style:{color:C.sub,fontSize:13,marginTop:3,lineHeight:18}},p.subtitle):null),p.trailing||null,!p.last?React.createElement(RN.View,{style:{position:"absolute",bottom:0,left:p.icon?52:15,right:0,height:1,backgroundColor:C.card2}}):null);}
+  function CustomRow(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:!p.onPress,style:({pressed})=>({minHeight:58,paddingHorizontal:15,paddingVertical:12,flexDirection:"row",alignItems:"center",backgroundColor:pressed?C.press:"transparent"})},p.icon?React.createElement(RN.Text,{style:{width:30,fontSize:18,color:C.sub,marginRight:7}},p.icon):null,React.createElement(RN.View,{style:{flex:1,minWidth:0,paddingRight:8}},React.createElement(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:16,fontWeight:"600"}},p.title),p.subtitle?React.createElement(RN.Text,{numberOfLines:2,style:{color:C.sub,fontSize:13,marginTop:3,lineHeight:18}},p.subtitle):null),p.trailing||null,!p.last?React.createElement(RN.View,{style:{position:"absolute",bottom:0,left:p.icon?52:15,right:0,height:1,backgroundColor:C.card2}}):null);}
   function CustomSwitch(p){const C=palette(),on=!!p.value,pos=React.useRef(new RN.Animated.Value(on?1:0)).current;React.useEffect(()=>{RN.Animated.spring(pos,{toValue:on?1:0,speed:22,bounciness:3,useNativeDriver:true}).start();},[on]);return React.createElement(RN.Pressable,{accessibilityRole:"switch",accessibilityState:{checked:on},onPress:()=>p.onChange(!on),hitSlop:8,style:{width:48,height:29,borderRadius:16,padding:3,justifyContent:"center",backgroundColor:on?C.blurple:C.off}},React.createElement(RN.Animated.View,{style:{width:23,height:23,borderRadius:12,backgroundColor:"#FFFFFF",elevation:1,transform:[{translateX:pos.interpolate({inputRange:[0,1],outputRange:[0,19]})}]}}));}
-  function CustomAction(p){const C=palette(),fill=p.danger?"#ED4245":p.secondary?C.chip:C.blurple;return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:p.disabled,accessibilityRole:"button",style:({pressed})=>({minHeight:48,borderRadius:13,alignItems:"center",justifyContent:"center",paddingHorizontal:16,marginTop:9,backgroundColor:fill,opacity:p.disabled ? 0.45 : pressed ? 0.75 : 1})},React.createElement(RN.Text,{style:{color:p.secondary&&!p.danger?C.text:"#FFFFFF",fontWeight:"700",fontSize:16}},p.title));}
+  function CustomAction(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:p.disabled,style:({pressed})=>({minHeight:48,borderRadius:13,alignItems:"center",justifyContent:"center",paddingHorizontal:16,marginTop:9,backgroundColor:p.secondary?C.chip:C.blurple,opacity:p.disabled?0.45:pressed?0.75:1})},React.createElement(RN.Text,{style:{color:"#FFFFFF",fontWeight:"700",fontSize:16}},p.title));}
   function CustomInput(p){const C=palette();return React.createElement(RN.TextInput,{...p,placeholderTextColor:C.sub,style:[{minHeight:48,borderRadius:13,borderWidth:1,borderColor:C.off,backgroundColor:C.bg,color:C.text,paddingHorizontal:14,fontSize:16},p.style]});}
   function Settings() {
     rainStore.useStore();
     const [screen, setScreen] = React.useState("main");
+    const screenProgress = React.useRef(new RN.Animated.Value(1)).current;
+    React.useEffect(() => { screenProgress.setValue(0); RN.Animated.timing(screenProgress, { toValue: 1, duration: 180, useNativeDriver: true }).start(); }, [screen]);
     const [limit, setLimit] = React.useState(PAGE);
     const [, bump] = React.useState(0);
     let settingsNavigation = null;
@@ -734,7 +736,7 @@ const implementation = (() => {
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
     const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:18,height:18,borderRadius:9,backgroundColor:v,borderWidth:1,borderColor:C.divider}}),Text({style:{color:C.sub,fontSize:13,marginLeft:8}},v));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
-    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,icon:rowIcon(key),onPress,trailing:valueChip(right)}));
+    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
     const Empty=(key,t)=>Text({key,style:{color:C.sub,fontSize:14,lineHeight:20,paddingHorizontal:14,paddingVertical:14,textAlign:"center"}},t),Title=(key,t)=>Text({key,style:{color:C.text,fontSize:22,fontWeight:"800",paddingTop:8,paddingBottom:8}},t);
@@ -746,10 +748,10 @@ const implementation = (() => {
     };
 
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
-    const captureModeLabel = () => cfg().captureMode === "expanded" ? "All received events" : "Loaded Only";
+    const captureModeLabel = () => cfg().captureMode === "expanded" ? "All new messages" : "Loaded messages";
     const captureModeDescription = () => cfg().captureMode === "expanded"
-      ? "Keeps new messages received outside the open chat. Only messages delivered by Discord can be recorded."
-      : "Lowest resource use; check only messages already loaded by Discord";
+      ? "Save messages delivered while other chats are open."
+      : "Save messages already loaded in the open chat.";
     const cycleCaptureMode = () => {
       cfg().captureMode = cfg().captureMode === "expanded" ? "loaded" : "expanded";
       if (cfg().captureMode === "loaded") clearRecentMessages();
@@ -819,6 +821,7 @@ const implementation = (() => {
         Section("Detection"),
         Switch("enabled", "Ghost ping logger", "Notify when a message that pinged you gets deleted"),
         Switch("pingMentions", "Mentions", "Messages that mentioned you"),
+        Switch("trackEveryone", "Track @everyone", "Include messages that mention everyone in this server.", (v) => { cfg().trackEveryone = v; refreshUI(); }),
         Switch("pingReplies", "Replies", "Replies to your messages"),
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
@@ -832,7 +835,7 @@ const implementation = (() => {
           else scheduleRecentArchiveSave();
           refreshUI();
         }),
-        PressRow("test-capture", "Test message capture", "Count new message events since this plugin started", showCaptureTest, ">"),
+        PressRow("test-capture", "Test message capture", "Count new messages since this plugin started", showCaptureTest, ">"),
         PressRow("cache-limit", "Maximum cached messages", "Delivered messages only · capped recent cache", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
@@ -840,9 +843,9 @@ const implementation = (() => {
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, paddingHorizontal: 4, paddingBottom: 4 } }, "Build " + BUILD);
+    const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1 } }, "Ghost Ping Logger " + BUILD);
     const header = screen === "main" ? [Text({ key: "header-title", style: { color: C.text, fontSize: 25, fontWeight: "800", marginBottom: 5 } }, "Ghost Ping Logger"), Text({ key: "header-subtitle", style: { color: C.sub, fontSize: 14, marginBottom: 20 } }, "Review deleted pings and message capture")] : [];
-    return h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, buildLabel, ...compose(content));
+    return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), buildLabel));
   }
 
   function onLoad() {
@@ -850,7 +853,7 @@ const implementation = (() => {
     receivedDMsThisSession = 0;
     receivedChannelsThisSession.clear();
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, rememberReceivedMessages: true, redName: true };
+    const defaults = { enabled: true, pingMentions: true, trackEveryone: false, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, rememberReceivedMessages: true, redName: true };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
     if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
