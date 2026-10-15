@@ -29,6 +29,7 @@ const implementation = (() => {
   const AML_BRIDGE_KEY = "__advanced_message_logger_gpl_bridge_v1__";
   let pings = [];
   const recentMessages = new Map();
+  const knownPingCandidates = new Map();
   const recentMessageSizes = new Map();
   const recentArchiveIds = new Set();
   let recentMessageBytes = 0;
@@ -191,6 +192,8 @@ const implementation = (() => {
     return Math.max(MIN_RECENT_MESSAGES, Math.min(MAX_RECENT_MESSAGES, Math.round(value)));
   }
   function getKnownMessage(channelId, id) {
+    const candidate = knownPingCandidates.get(String(id));
+    if (candidate && String(candidate.channel_id) === String(channelId)) return candidate;
     const cached = getMessage(channelId, id);
     if (cached) return cached;
     try {
@@ -294,7 +297,9 @@ const implementation = (() => {
       closePingAlert();
       if (!isTest) setTimeout(() => jumpTo(entry.c, entry.g, entry.id, lastSettingsNavigation), 180);
     };
-    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
+    const what = entry.status === "edited"
+      ? entry.k === "dm" ? "edited a message in your DM to remove a ping" : entry.k === "reply" ? "edited a reply to you to remove its ping" : "edited a message to remove a mention"
+      : entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
     const colors = palette();
     const h = React.createElement;
     const dark = colors.text === "#FFFFFF";
@@ -318,7 +323,9 @@ const implementation = (() => {
   }
 
   function showPingAlert(entry) {
-    const what = entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
+    const what = entry.status === "edited"
+      ? entry.k === "dm" ? "edited a message in your DM to remove a ping" : entry.k === "reply" ? "edited a reply to you to remove its ping" : "edited a message to remove a mention"
+      : entry.k === "dm" ? "deleted a message in your DM" : entry.k === "reply" ? "deleted a reply to you" : "deleted a message with a mention";
     const isTest = String(entry.id).startsWith("test-");
     const buttons = [];
     if (!isTest) buttons.push({ text: "Dismiss", style: "cancel" });
@@ -396,15 +403,53 @@ const implementation = (() => {
     return !!pingKindFor(msg, channelId);
   }
 
-  function check(msg, channelId, guildId) {
+  function check(msg, channelId, guildId, status) {
     const kind = pingKindFor(msg, channelId);
     if (!kind) return null;
     const existing = pings.find((p) => String(p.id) === String(msg.id));
     if (existing) return existing;
     return addPing({
       id: msg.id, c: channelId, g: guildId || null, ai: msg.author.id, an: nameOf(msg.author),
-      t: clip(msg.content, MAX_SNIPPET), k: kind, at: Date.now(),
+      t: clip(msg.content, MAX_SNIPPET), k: kind, status: status || "deleted", at: Date.now(),
     });
+  }
+
+  function checkEditedPing(previous, update, channelId, guildId) {
+    if (!previous || !update || !previous.id || !previous.author) return;
+    const oldKind = pingKindFor(previous, channelId);
+    if (!oldKind || String(previous.id) === String(update.id) && pings.some((entry) => String(entry.id) === String(update.id))) return;
+    const changedContent = typeof update.content === "string" && update.content !== previous.content;
+    const hasMentionsField = Object.prototype.hasOwnProperty.call(update, "mentions");
+    const hasEveryoneField = Object.prototype.hasOwnProperty.call(update, "mention_everyone") || Object.prototype.hasOwnProperty.call(update, "mentionEveryone");
+    const hasReferenceField = Object.prototype.hasOwnProperty.call(update, "message_reference") || Object.prototype.hasOwnProperty.call(update, "messageReference") || Object.prototype.hasOwnProperty.call(update, "reference");
+    const merged = { ...previous, ...update };
+    if (changedContent && !hasMentionsField) {
+      const me = myId();
+      const content = String(update.content || "");
+      merged.mentions = me && (content.includes("<@" + me + ">") || content.includes("<@!" + me + ">")) ? [me] : [];
+      merged.mentioned = false;
+    }
+    if (changedContent && !hasEveryoneField) merged.mention_everyone = /@everyone|@here/i.test(String(update.content || ""));
+    if (changedContent && !hasReferenceField && !previous.messageReference && !previous.message_reference && !previous.reference) merged.messageReference = null;
+    if (pingKindFor(merged, channelId)) return;
+    const existing = pings.find((entry) => String(entry.id) === String(previous.id));
+    if (existing) return;
+    return addPing({
+      id: previous.id, c: channelId, g: guildId || null, ai: previous.author.id, an: nameOf(previous.author),
+      t: clip(previous.content, MAX_SNIPPET), k: oldKind, status: "edited", at: Date.now(),
+    });
+  }
+
+  function rememberPingCandidate(message, channelId, guildId) {
+    if (!message || !message.id || !channelId) return;
+    const snapshot = { ...message, channel_id: String(channelId), guild_id: guildId || message.guild_id || message.guildId || null };
+    if (pingKindFor(snapshot, channelId)) {
+      knownPingCandidates.delete(String(message.id));
+      knownPingCandidates.set(String(message.id), snapshot);
+      while (knownPingCandidates.size > MAX_PINGS * 12) knownPingCandidates.delete(knownPingCandidates.keys().next().value);
+    } else {
+      knownPingCandidates.delete(String(message.id));
+    }
   }
 
   function handle(channelId, guildId, ids, retainForFallback) {
@@ -547,6 +592,8 @@ const implementation = (() => {
     try {
       if (e.loggerRemoval) return;
       if (e.type === "MESSAGE_CREATE") {
+        const created = e.message;
+        if (created) rememberPingCandidate(created, created.channel_id || created.channelId, created.guild_id || created.guildId || e.guildId);
         rememberMessage(e.message);
         if (e.message && e.message.id) {
           receivedThisSession++;
@@ -557,7 +604,15 @@ const implementation = (() => {
           }
         }
       }
-      else if (e.type === "MESSAGE_UPDATE") rememberMessage(e.message, recentMessages.has(String(e.message && e.message.id)));
+      else if (e.type === "MESSAGE_UPDATE") {
+        const update = e.message;
+        const channelId = e.channelId || update && (update.channel_id || update.channelId);
+        const guildId = e.guildId || update && (update.guild_id || update.guildId) || guildOf(channelId);
+        const previous = update && channelId && getKnownMessage(channelId, update.id);
+        if (previous) checkEditedPing(previous, update, channelId, guildId);
+        if (update) rememberPingCandidate(previous ? { ...previous, ...update } : update, channelId, guildId);
+        rememberMessage(update, recentMessages.has(String(update && update.id)));
+      }
       else if (e.type === "LOCAL_MESSAGE_CREATE" && e.message && e.message.id) rememberMessage(e.message);
       else if (e.type === "MESSAGE_DELETE") {
         const result = onDelete(e);
@@ -580,7 +635,7 @@ const implementation = (() => {
     const c = currentChannelId() || "0";
     const entry = {
       id: "test-" + Date.now(), c, g: guildOf(c), ai: "0", an: "Test user",
-      t: "This is a test ghost ping.", k: "mention", at: Date.now(),
+      t: "This is a test ghost ping.", k: "mention", status: "test", at: Date.now(),
     };
     pings.unshift(entry);
     if (pings.length > MAX_PINGS) pings.length = MAX_PINGS;
@@ -704,6 +759,9 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     React.useEffect(() => { screenProgress.setValue(0); RN.Animated.timing(screenProgress, { toValue: 1, duration: 180, useNativeDriver: true }).start(); }, [screen]);
     const [limit, setLimit] = React.useState(PAGE);
     const [, bump] = React.useState(0);
+    const [historyQuery, setHistoryQuery] = React.useState("");
+    const [historyFrom, setHistoryFrom] = React.useState("");
+    const [historyTo, setHistoryTo] = React.useState("");
     let settingsNavigation = null;
     try {
       const navigationModule = findByProps("useNavigation");
@@ -764,7 +822,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
     const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:20,height:20,borderRadius:10,backgroundColor:v,borderWidth:1,borderColor:C.divider}}));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
-    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:key==="capture-mode"?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
+    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:(key==="capture-mode"||key==="retention")?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
     const Empty=(key,t)=>Text({key,style:{color:C.sub,fontSize:14,lineHeight:20,paddingHorizontal:14,paddingVertical:14,textAlign:"center"}},t),Title=(key,t)=>Text({key,style:{color:C.text,fontSize:22,fontWeight:"800",paddingTop:8,paddingBottom:8}},t);
@@ -852,20 +910,53 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
 
     let content;
     if (screen === "history") {
+      const needle = historyQuery.trim().toLowerCase();
+      const fromTime = historyFrom.trim() ? Date.parse(historyFrom.trim() + "T00:00:00") : NaN;
+      const toTime = historyTo.trim() ? Date.parse(historyTo.trim() + "T23:59:59.999") : NaN;
+      const filteredPings = pings.filter((entry) => {
+        const occurredAt = Number(entry.at) || 0;
+        const searchable = [entry.an, entry.t, channelLabel(entry.c, entry.g), KINDS[entry.k], entry.status === "edited" ? "edited" : "deleted"].join(" ").toLowerCase();
+        return (!needle || searchable.includes(needle)) && (!Number.isFinite(fromTime) || occurredAt >= fromTime) && (!Number.isFinite(toTime) || occurredAt <= toTime);
+      });
       content = [
         Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
-        Title("title", "Ghost pings (" + pings.length + ")"),
+        Title("title", "Ghost pings (" + filteredPings.length + ")"),
+        mark(h(RN.View, { key: "history-filter-fields", style: { paddingHorizontal: 14, paddingVertical: 7 } },
+          h(RN.Text, { style: { color: C.sub, fontSize: 12, fontWeight: "700", marginBottom: 6 } }, "Search user, channel, server, or message"),
+          h(CustomInput, { value: historyQuery, placeholder: "Name, #channel, server, or text", onChangeText: (value) => { setHistoryQuery(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none", style: { marginBottom: 8 } }),
+          h(RN.View, { style: { flexDirection: "row" } },
+            h(RN.View, { style: { flex: 1, marginRight: 5 } }, h(CustomInput, { value: historyFrom, placeholder: "From · YYYY-MM-DD", onChangeText: (value) => { setHistoryFrom(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none" })),
+            h(RN.View, { style: { flex: 1, marginLeft: 5 } }, h(CustomInput, { value: historyTo, placeholder: "To · YYYY-MM-DD", onChangeText: (value) => { setHistoryTo(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none" }))),
+          (needle || historyFrom || historyTo) ? h(RN.Pressable, { onPress: () => { setHistoryQuery(""); setHistoryFrom(""); setHistoryTo(""); setLimit(PAGE); }, style: { alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 4 } }, h(RN.Text, { style: { color: C.blurple, fontWeight: "700" } }, "Clear filters")) : null)),
       ];
-      if (pings.length) {
+      content.push(Btn("save-filter", "Save current filter", () => {
+        try {
+          openNativeInputAlert({ id: "gpl-save-history-filter", title: "Save history filter", content: "Give this search a name.", onSave: (name) => {
+            const cleanName = String(name || "").trim().slice(0, 40);
+            if (!cleanName) return;
+            const saved = Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [];
+            cfg().savedPingFilters = [{ name: cleanName, query: historyQuery, from: historyFrom, to: historyTo }, ...saved.filter((item) => item.name !== cleanName)].slice(0, 20);
+            refreshUI();
+          } });
+        } catch (_) { toast("Could not open saved filter"); }
+      }));
+      const savedFilters = Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [];
+      savedFilters.forEach((item, index) => content.push(PressRow("saved-ping-filter-" + index, item.name || "Saved filter", "Tap to apply", () => {
+        ask(item.name || "Saved filter", "Apply this saved search or remove it.", [
+          { text: "Apply", onPress: () => { setHistoryQuery(item.query || ""); setHistoryFrom(item.from || ""); setHistoryTo(item.to || ""); setLimit(PAGE); refreshUI(); } },
+          { text: "Remove", style: "destructive", onPress: () => { cfg().savedPingFilters = (Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : []).filter((_, i) => i !== index); refreshUI(); } },
+        ]);
+      })));
+      if (filteredPings.length) {
         content.push(Btn("clear", "Clear history", () => {
           ask("Clear ghost ping history?", "This removes every saved ghost ping.", [
             { text: "Clear", style: "destructive", onPress: () => { pings = []; save(); refreshUI(); } },
           ]);
         }, RED));
       } else {
-        content.push(Empty("empty", "No ghost pings yet."));
+        content.push(Empty("empty", pings.length ? "No ghost pings match these filters." : "No ghost pings yet."));
       }
-      pings.slice(0, limit).forEach(function (entry) {
+      filteredPings.slice(0, limit).forEach(function (entry) {
         // Keep each row's identity and action bound to the same immutable
         // values. This mirrors the isolated row callbacks used by AML logs.
         const pingId = String(entry.id);
@@ -876,19 +967,20 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         const messageText = String(entry.t || "");
         const occurredAt = Number(entry.at) || 0;
         const rowKey = "ghost-history-" + pingId;
+        const status = entry.status === "edited" ? "Edited" : entry.status === "test" ? "Test" : "Deleted";
         content.push(PressRow(rowKey, clip(messageText, 200) || "(no text)",
-          kind + " · " + authorName + " · " + channelLabel(channelId, guildId) + " · " + fmtTime(occurredAt), function () {
-            ask(kind + " from " + authorName, clip(messageText, 600), [
+          status + " · " + kind + " · " + authorName + " · " + channelLabel(channelId, guildId) + " · " + fmtTime(occurredAt), function () {
+            ask(status + " " + kind + " from " + authorName, clip(messageText, 600), [
               { text: "Jump to message", onPress: () => jumpTo(channelId, guildId, pingId, settingsNavigation) },
               { text: "Remove", style: "destructive", onPress: () => { removePing(pingId); refreshUI(); } },
             ]);
           }));
       });
-      if (pings.length > limit) content.push(Btn("more", "Show more", () => setLimit(limit + PAGE)));
+      if (filteredPings.length > limit) content.push(Btn("more", "Show more", () => setLimit(limit + PAGE)));
     } else {
       content = [
         Section("Detection"),
-        Switch("enabled", "Ghost ping logger", "Notify when a message that pinged you gets deleted"),
+        Switch("enabled", "Ghost ping logger", "Notify when a ping is deleted or edited out of a message"),
         Switch("pingMentions", "Mentions", "Messages that mentioned you"),
         Switch("trackEveryone", "Track @everyone", "Include messages that mention everyone in this server.", (v) => { cfg().trackEveryone = v; refreshUI(); }),
         Switch("pingReplies", "Replies", "Replies to your messages"),
