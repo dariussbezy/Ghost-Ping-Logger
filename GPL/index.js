@@ -17,7 +17,7 @@ const implementation = (() => {
   const MAX_RECENT_CACHE_BYTES = 8 * 1024 * 1024;
   const RECENT_ARCHIVE_SAVE_DELAY = 30000;
   const MAX_SNIPPET = 300;
-  const BUILD = "v1.0.2";
+  const BUILD = "v1.0.0";
   const GPL_ALERT_BRIDGE_KEY = "__ghost_ping_logger_aml_bridge_v1__";
   const PAGE = 40;
   const DAY = 86400000;
@@ -64,6 +64,13 @@ const implementation = (() => {
       return !!(bridge && bridge.active && typeof bridge.ownsDeletedMessage === "function" && bridge.ownsDeletedMessage(id));
     } catch (_) { return false; }
   }
+  function amlOwnsRecentCache() {
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      return !!(bridge && bridge.active && typeof bridge.ownsRecentCache === "function" && bridge.ownsRecentCache());
+    } catch (_) { return false; }
+  }
+
   function fmtTime(ms) {
     const d = new Date(ms);
     const p = (n) => (n < 10 ? "0" : "") + n;
@@ -89,7 +96,10 @@ const implementation = (() => {
     if (cfg().captureMode !== "expanded" || !message || !message.id) return;
     const channelId = message.channel_id || message.channelId;
     if (!channelId) return;
-    const previous = recentMessages.get(message.id);
+    const channel = getChannel(channelId);
+    if (!isDM(channel) && !pingKindFor(message, channelId)) return;
+    if (amlOwnsRecentCache()) return;
+    const previous = recentMessages.get(String(message.id));
     if (!previous && !(message.author && typeof message.author === "object")) return;
     const merged = previous ? { ...previous, ...message } : message;
     const reference = merged.messageReference || merged.message_reference || merged.reference;
@@ -183,13 +193,17 @@ const implementation = (() => {
   function getKnownMessage(channelId, id) {
     const cached = getMessage(channelId, id);
     if (cached) return cached;
+    try {
+      const bridge = globalThis[AML_BRIDGE_KEY];
+      if (bridge && bridge.active && amlOwnsRecentCache() && typeof bridge.getKnownMessage === "function") {
+        const shared = bridge.getKnownMessage(channelId, id);
+        if (shared && (!shared.channel_id || String(shared.channel_id) === String(channelId))) return shared;
+      }
+    } catch (_) {}
     if (cfg().captureMode === "expanded") {
       const recent = recentMessages.get(String(id));
       if (recent && String(recent.channel_id) === String(channelId)) return recent;
     }
-    // AML may have received this message through a client event path that did
-    // not populate GPL's own cache. Use that cache only as an optional fallback;
-    // GPL's local MessageStore/recentMessages remain sufficient when AML is off.
     try {
       const bridge = globalThis[AML_BRIDGE_KEY];
       if (bridge && bridge.active && typeof bridge.getKnownMessage === "function") {
@@ -330,13 +344,13 @@ const implementation = (() => {
   }
 
   function isReplyToMe(msg, channelId, me) {
-    const ref = msg.messageReference;
+    const ref = msg.messageReference || msg.message_reference || msg.reference;
     if (!ref) return false;
     const refId = ref.message_id || ref.messageId;
     const refChannel = ref.channel_id || ref.channelId || channelId;
     const target = refId ? getKnownMessage(refChannel, refId) : null;
     if (target && target.author && target.author.id === me) return true;
-    const embedded = msg.referencedMessage && msg.referencedMessage.message;
+    const embedded = msg.referencedMessage && (msg.referencedMessage.message || msg.referencedMessage);
     const alt = embedded || msg.referenced_message;
     return !!(alt && alt.author && alt.author.id === me);
   }
@@ -749,7 +763,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     const rowSet=new WeakSet(),sectionTitles=new WeakMap(),mark=(el)=>{rowSet.add(el);return el;},HEXCOLOR=/^#[0-9A-Fa-f]{6}$/;
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
-    const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:18,height:18,borderRadius:9,backgroundColor:v,borderWidth:1,borderColor:C.divider}}),Text({style:{color:C.sub,fontSize:13,marginLeft:8}},v));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
+    const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:20,height:20,borderRadius:10,backgroundColor:v,borderWidth:1,borderColor:C.divider}}));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
     const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:key==="capture-mode"?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
@@ -762,7 +776,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     };
 
     const retentionLabel = () => (cfg().retentionDays === 7 ? "7 days" : cfg().retentionDays === 30 ? "30 days" : "Forever");
-    const captureModeLabel = () => cfg().captureMode === "expanded" ? "All new messages" : "Loaded messages";
+    const captureModeLabel = () => cfg().captureMode === "expanded" ? "All" : "Loaded";
     const captureModeDescription = () => cfg().captureMode === "expanded"
       ? "Captures messages delivered outside the open chat."
       : "Captures messages loaded in the open chat.";
@@ -862,7 +876,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
-        PressRow("capture-mode", "Capture mode", captureModeDescription(), openCaptureModeMenu, captureModeLabel()),
+        PressRow("capture-mode", "Capture mode", "", openCaptureModeMenu, captureModeLabel()),
         Switch("rememberReceivedMessages", "Remember new messages", "Save new messages received by Discord on this device across restarts.", (v) => {
           cfg().rememberReceivedMessages = v;
           if (!v) { recentArchiveIds.clear(); cfg().receivedMessages = []; recentArchiveDirty = false; if (recentArchiveTimer) { clearTimeout(recentArchiveTimer); recentArchiveTimer = null; } }
@@ -877,9 +891,10 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
+    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 16, marginBottom: 10, padding: 13, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 14, fontWeight: "700", marginBottom: 5 } }, "Quick guide"), Text({ style: { color: C.sub, fontSize: 12, lineHeight: 17 } }, "DM messages are saved for context; channel capture focuses on mentions and replies."), Text({ style: { color: C.sub, fontSize: 12, lineHeight: 17, marginTop: 3 } }, "Use Capture mode to choose All or Loaded messages.")) : null;
     const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1 } }, "Ghost Ping Logger " + BUILD);
     const header = screen === "main" ? [Text({ key: "header-title", style: { color: C.text, fontSize: 25, fontWeight: "800", marginBottom: 5 } }, "Ghost Ping Logger"), Text({ key: "header-subtitle", style: { color: C.sub, fontSize: 14, marginBottom: 20 } }, "Review deleted pings and message capture")] : [];
-    return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), buildLabel));
+    return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), helpFooter, buildLabel));
   }
 
   function onLoad() {
