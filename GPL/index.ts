@@ -912,7 +912,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 16, marginBottom: 10, padding: 13, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 16, fontWeight: "700", marginBottom: 7 } }, "Quick guide"), Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20 } }, "DM messages are saved for context; channel capture focuses on mentions and replies."), Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20, marginTop: 5 } }, "Use Capture mode to choose All or Loaded messages.")) : null;
+    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 18, marginBottom: 12, padding: 16, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 20, fontWeight: "800", marginBottom: 8 } }, "Quick guide"), Text({ style: { color: C.sub, fontSize: 17, lineHeight: 23 } }, "Saves DMs and channel mentions or replies. Capture mode starts on All.")) : null;
     const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1 } }, "Ghost Ping Logger " + BUILD);
     const header = screen === "main" ? [Text({ key: "header-title", style: { color: C.text, fontSize: 25, fontWeight: "800", marginBottom: 5 } }, "Ghost Ping Logger"), Text({ key: "header-subtitle", style: { color: C.sub, fontSize: 14, marginBottom: 20 } }, "Review deleted pings and message capture")] : [];
     return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), helpFooter, buildLabel));
@@ -925,6 +925,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     const s = cfg();
     const defaults = { enabled: true, pingMentions: true, trackEveryone: false, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, rememberReceivedMessages: true, redName: true };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
+    if (s.captureModeDefaultMigration !== 1) { s.captureMode = "expanded"; s.captureModeDefaultMigration = 1; }
     if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
     if (!loadStores()) { toast("Ghost Ping Logger: required Discord modules not found"); return; }
