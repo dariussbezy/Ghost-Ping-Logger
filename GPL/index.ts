@@ -764,7 +764,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
     const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:20,height:20,borderRadius:10,backgroundColor:v,borderWidth:1,borderColor:C.divider}}));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
-    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:key==="capture-mode"?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
+    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:(key==="capture-mode"||key==="retention")?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
     const Empty=(key,t)=>Text({key,style:{color:C.sub,fontSize:14,lineHeight:20,paddingHorizontal:14,paddingVertical:14,textAlign:"center"}},t),Title=(key,t)=>Text({key,style:{color:C.text,fontSize:22,fontWeight:"800",paddingTop:8,paddingBottom:8}},t);
@@ -821,11 +821,32 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         openNativeInputAlert({ id: "gpl-cache-limit", title: "Maximum cached messages", content: "Messages received by Discord · approx. 8 MiB cache budget", initialValue: recentMessageLimit(), keyboardType: "number-pad", onSave: saveLimit });
       } catch (_) { toast("Could not open cache limit settings"); }
     };
-    const cycleRetention = () => {
-      const cur = cfg().retentionDays || 0;
-      cfg().retentionDays = cur === 0 ? 7 : cur === 7 ? 30 : 0;
+    const chooseRetention = (days) => {
+      cfg().retentionDays = days;
       if (purge()) save();
       refreshUI();
+    };
+    const openRetentionMenu = () => {
+      const select = (days) => {
+        chooseRetention(days);
+        try { const hide = findByProps("openLazy", "hideActionSheet"); hide && hide.hideActionSheet && hide.hideActionSheet(); } catch (_) {}
+      };
+      try {
+        const sheets = findByProps("showSimpleActionSheet");
+        if (sheets && typeof sheets.showSimpleActionSheet === "function") {
+          sheets.showSimpleActionSheet({ key: "gpl-retention-selector", header: { title: "Keep history for" }, options: [
+            { label: "Forever", isMarked: !cfg().retentionDays, onPress: () => select(0) },
+            { label: "7 days", isMarked: cfg().retentionDays === 7, onPress: () => select(7) },
+            { label: "30 days", isMarked: cfg().retentionDays === 30, onPress: () => select(30) }
+          ] });
+          return;
+        }
+      } catch (_) {}
+      ask("Keep history for", "Choose how long ghost ping history is kept.", [
+        { text: "Forever", onPress: () => select(0) },
+        { text: "7 days", onPress: () => select(7) },
+        { text: "30 days", onPress: () => select(30) }
+      ]);
     };
 
 
@@ -876,7 +897,7 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         Switch("showToast", "Show ghost ping alert", "Show a modal with Jump to message and Dismiss"),
         Switch("redName", "Red usernames on ghost pings", "Color the sender name with the ghost ping message", (v) => { cfg().redName = v; refreshGhostRows(); refreshUI(); }),
         Section("Message capture"),
-        PressRow("capture-mode", "Capture mode", "", openCaptureModeMenu, captureModeLabel()),
+        PressRow("capture-mode", "Capture mode", captureModeDescription(), openCaptureModeMenu, captureModeLabel()),
         Switch("rememberReceivedMessages", "Remember new messages", "Save new messages received by Discord on this device across restarts.", (v) => {
           cfg().rememberReceivedMessages = v;
           if (!v) { recentArchiveIds.clear(); cfg().receivedMessages = []; recentArchiveDirty = false; if (recentArchiveTimer) { clearTimeout(recentArchiveTimer); recentArchiveTimer = null; } }
@@ -887,11 +908,11 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         PressRow("cache-limit", "Maximum cached messages", "Delivered messages only · capped recent cache", editRecentMessageLimit, String(recentMessageLimit())),
         Section("History"),
         PressRow("nav", "Ghost ping history", pings.length + " saved", () => { setLimit(PAGE); setScreen("history"); }, ">"),
-        PressRow("retention", "Keep history for", "Older entries are removed automatically", cycleRetention, retentionLabel()),
+        PressRow("retention", "Keep history for", "Older entries are removed automatically", openRetentionMenu, retentionLabel()),
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 16, marginBottom: 10, padding: 13, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 14, fontWeight: "700", marginBottom: 5 } }, "Quick guide"), Text({ style: { color: C.sub, fontSize: 12, lineHeight: 17 } }, "DM messages are saved for context; channel capture focuses on mentions and replies."), Text({ style: { color: C.sub, fontSize: 12, lineHeight: 17, marginTop: 3 } }, "Use Capture mode to choose All or Loaded messages.")) : null;
+    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 16, marginBottom: 10, padding: 13, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 16, fontWeight: "700", marginBottom: 7 } }, "Quick guide"), Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20 } }, "DM messages are saved for context; channel capture focuses on mentions and replies."), Text({ style: { color: C.sub, fontSize: 14, lineHeight: 20, marginTop: 5 } }, "Use Capture mode to choose All or Loaded messages.")) : null;
     const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1 } }, "Ghost Ping Logger " + BUILD);
     const header = screen === "main" ? [Text({ key: "header-title", style: { color: C.text, fontSize: 25, fontWeight: "800", marginBottom: 5 } }, "Ghost Ping Logger"), Text({ key: "header-subtitle", style: { color: C.sub, fontSize: 14, marginBottom: 20 } }, "Review deleted pings and message capture")] : [];
     return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), helpFooter, buildLabel));
