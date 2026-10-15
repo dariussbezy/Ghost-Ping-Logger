@@ -733,25 +733,166 @@ const implementation = (() => {
     return null;
   }
 
-  function CustomSection(p){const C=palette();return React.createElement(RN.View,{style:{marginBottom:p.compact?14:22}},p.title?React.createElement(RN.Text,{style:{color:C.sub,fontSize:13,fontWeight:"700",letterSpacing:.4,marginHorizontal:5,marginBottom:9,textTransform:"uppercase"}},p.title):null,React.createElement(RN.View,{style:{backgroundColor:C.card,borderRadius:17,overflow:"hidden",borderWidth:1,borderColor:C.card2}},p.children));}
+  /* ---- shared settings design kit (identical in AML / GPL / QT) ---- */
+  const KIT_TILES = {
+    lang: ["LanguageIcon", "\u6587", "#5865F2"], paint: ["PaintPaletteIcon", "\u25C9", "#EB459E"], time: ["ClockIcon", "\u25F7", "#F0B232"],
+    store: ["ClipboardListIcon", "\u25A3", "#3BA55D"], trash: ["TrashIcon", "\u232B", "#ED4245"], edit: ["PencilIcon", "\u270E", "#F07B3E"],
+    shield: ["ShieldIcon", "\u2298", "#80848E"], bell: ["BellIcon", "!", "#F0B232"], at: ["BellIcon", "@", "#ED4245"],
+    reply: ["ChatMarkUnreadIcon", "\u21A9", "#5865F2"], search: ["CompassIcon", "\u2315", "#1ABC9C"], chat: ["ChatMarkUnreadIcon", "\u25A4", "#5865F2"],
+    plus: ["PlusSmallIcon", "+", "#5865F2"], link: ["LinkIcon", "\u2197", "#3498DB"], test: ["WrenchIcon", "\u25B7", "#9B59B6"],
+    star: ["StarIcon", "\u2605", "#F1C40F"], server: ["PinIcon", "\u25C7", "#3498DB"], power: ["SettingsIcon", "\u25CF", "#43B581"],
+    text: ["PencilIcon", "Aa", "#F07B3E"], guide: ["ClipboardCheckIcon", "?", "#5865F2"], gear: ["SettingsIcon", "\u2022", "#80848E"]
+  };
+  const KIT_RULES = [
+    [/^(default|red|orange|gold|green|teal|blue|indigo|purple|pink|gray)$/i, null],
+    [/^ghost ping logger$/i, "power"], [/color|appearance/, "paint"], [/notify|alert|toast/, "bell"], [/test/, "test"],
+    [/button|position|composer/, "plus"], [/clear|remove/, "trash"],
+    [/clock|time|history|retention|keep .* for/, "time"], [/quick|favorite|saved/, "star"],
+    [/cache|storage|persist|remember|restart|across/, "store"],
+    [/deleted|delete/, "trash"], [/edit/, "edit"], [/ignore/, "shield"], [/mention|everyone|ping/, "at"],
+    [/reply|replies/, "reply"], [/filter|search/, "search"], [/jump/, "link"],
+    [/translate|translation|google|deepl|language/, "lang"], [/word|term/, "text"], [/server|guild/, "server"],
+    [/capture|message|channel|dm/, "chat"], [/enabled|logger/, "power"]
+  ];
+  const kitAssetCache = new Map();
+  function kitAsset(name) {
+    if (kitAssetCache.has(name)) return kitAssetCache.get(name);
+    let id = null;
+    try { const r = globalThis.rain; id = (r && r.api && r.api.assets && r.api.assets.findAssetId && r.api.assets.findAssetId(name)) || null; } catch (_) { id = null; }
+    kitAssetCache.set(name, id);
+    return id;
+  }
+  function hexA(hex, a) {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(hex || ""));
+    if (!m) return hex;
+    const n = Math.round(a * 255).toString(16);
+    return "#" + m[1] + (n.length < 2 ? "0" + n : n);
+  }
   function settingIconForTitle(title) {
     const text = String(title || "").toLowerCase();
-    const rules = [
-        [/translate|translation|google|deepl/, "↔"], [/language/, "文"], [/color|appearance/, "◉"],
-        [/clock|time|history|retention/, "◷"], [/cache|storage|persist|remember|restart/, "▣"],
-        [/deleted|delete/, "⌫"], [/edit/, "✎"], [/ignore/, "⊘"], [/mention|everyone|ping/, "@"],
-        [/reply/, "↩"], [/filter|search/, "⌕"], [/capture|message|channel|dm/, "▤"],
-        [/alert|notify|toast/, "!"], [/button|position|composer/, "+"], [/word|term/, "Aa"],
-        [/jump/, "↗"], [/test/, "▷"], [/server|guild/, "◇"], [/bot/, "◆"],
-        [/quick|favorite|saved/, "★"], [/clear|remove/, "×"], [/enabled|logger/, "●"]
-    ];
-    const match = rules.find(([pattern]) => pattern.test(text));
-    return match ? match[1] : "•";
-}
-function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||settingIconForTitle(p.title);return h(RN.Pressable,{accessibilityRole:p.onPress?"button":undefined,onPress:p.onPress,disabled:!p.onPress,style:({pressed})=>({minHeight:58,paddingHorizontal:15,paddingVertical:12,flexDirection:"row",alignItems:"center",backgroundColor:pressed?C.press:"transparent"})},icon?h(RN.Text,{style:{width:30,fontSize:18,color:C.sub,marginRight:7,textAlign:"center"}},icon):null,h(RN.View,{style:{flex:1,minWidth:0,paddingRight:8}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:16,fontWeight:"600"}},p.title),p.subtitle?h(RN.Text,{numberOfLines:2,style:{color:C.sub,fontSize:13,marginTop:3,lineHeight:18}},p.subtitle):null),p.trailing||null,!p.last?h(RN.View,{style:{position:"absolute",bottom:0,left:icon?52:15,right:0,height:1,backgroundColor:C.card2}}):null);}
-  function CustomSwitch(p){const C=palette(),on=!!p.value,pos=React.useRef(new RN.Animated.Value(on?1:0)).current;React.useEffect(()=>{RN.Animated.spring(pos,{toValue:on?1:0,speed:22,bounciness:3,useNativeDriver:true}).start();},[on]);return React.createElement(RN.Pressable,{accessibilityRole:"switch",accessibilityState:{checked:on},onPress:()=>p.onChange(!on),hitSlop:8,style:{width:48,height:29,borderRadius:16,padding:3,justifyContent:"center",backgroundColor:on?C.blurple:C.off}},React.createElement(RN.Animated.View,{style:{width:23,height:23,borderRadius:12,backgroundColor:"#FFFFFF",elevation:1,transform:[{translateX:pos.interpolate({inputRange:[0,1],outputRange:[0,19]})}]}}));}
-  function CustomAction(p){const C=palette();return React.createElement(RN.Pressable,{onPress:p.onPress,disabled:p.disabled,style:({pressed})=>({minHeight:48,borderRadius:13,alignItems:"center",justifyContent:"center",paddingHorizontal:16,marginTop:9,backgroundColor:p.secondary?C.chip:C.blurple,opacity:p.disabled?0.45:pressed?0.75:1})},React.createElement(RN.Text,{style:{color:"#FFFFFF",fontWeight:"700",fontSize:16}},p.title));}
-  function CustomInput(p){const C=palette();return React.createElement(RN.TextInput,{...p,placeholderTextColor:C.sub,style:[{minHeight:48,borderRadius:13,borderWidth:1,borderColor:C.off,backgroundColor:C.bg,color:C.text,paddingHorizontal:14,fontSize:16},p.style]});}
+    const match = KIT_RULES.find(([pattern]) => pattern.test(text));
+    return match ? match[1] : null;
+  }
+  function kitIconKey(p) {
+    if (!p || p.noIcon) return null;
+    if (p.icon && KIT_TILES[p.icon]) return p.icon;
+    return settingIconForTitle(p.title);
+  }
+  function KitChevron(p) {
+    const h = React.createElement, s = p.size || 8, deg = p.dir === "up" ? "225deg" : p.dir === "right" ? "-45deg" : "45deg";
+    return h(RN.View, { style: { width: s, height: s, borderRightWidth: 2, borderBottomWidth: 2, borderColor: p.color, borderRadius: 1, transform: [{ rotate: deg }], marginTop: p.dir === "up" ? 3 : p.dir === "down" ? -3 : 0, marginHorizontal: 3 } });
+  }
+  function KitTile(p) {
+    const h = React.createElement, t = KIT_TILES[p.k] || KIT_TILES.gear, size = p.size || 32, asset = kitAsset(t[0]);
+    const inner = Math.round(size * 0.56);
+    return h(RN.View, { style: { width: size, height: size, borderRadius: Math.round(size * 0.3), backgroundColor: t[2], alignItems: "center", justifyContent: "center", marginRight: p.noMargin ? 0 : 13 } },
+      asset ? h(RN.Image, { source: asset, resizeMode: "contain", style: { width: inner, height: inner, tintColor: "#FFFFFF" } })
+        : h(RN.Text, { style: { color: "#FFFFFF", fontSize: Math.round(size * 0.5), fontWeight: "700" } }, t[1]));
+  }
+  function CustomSection(p) {
+    const C = palette(), h = React.createElement;
+    const kids = React.Children.toArray(p.children);
+    const any = kids.some((k) => k && k.type === CustomRow && kitIconKey(k.props));
+    const out = kids.map((k) => (k && k.type === CustomRow && any && !k.props.noIcon && !kitIconKey(k.props)) ? React.cloneElement(k, { __fallbackIcon: true }) : k);
+    return h(RN.View, { style: { marginBottom: p.compact ? 14 : 24 } },
+      p.title ? h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginHorizontal: 6, marginBottom: 10 } },
+        h(RN.View, { style: { width: 3, height: 14, borderRadius: 2, backgroundColor: C.blurple, marginRight: 8 } }),
+        h(RN.Text, { numberOfLines: 1, style: { color: C.text, fontSize: 15, fontWeight: "700", letterSpacing: 0.1, flexShrink: 1 } }, p.title)) : null,
+      h(RN.View, { style: { backgroundColor: C.card, borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: C.card2 } }, ...out),
+      p.footer ? h(RN.Text, { style: { color: C.sub, fontSize: 12, lineHeight: 17, marginHorizontal: 8, marginTop: 8 } }, p.footer) : null);
+  }
+  function CustomRow(p) {
+    const C = palette(), h = React.createElement;
+    const key = p.__fallbackIcon ? (kitIconKey(p) || "gear") : kitIconKey(p);
+    const tile = key ? KitTile({ k: key, size: 34 }) : null;
+    return h(RN.Pressable, {
+      accessibilityRole: p.onPress ? "button" : undefined, onPress: p.onPress, disabled: !p.onPress,
+      style: ({ pressed }) => ({ minHeight: 66, paddingHorizontal: 16, paddingVertical: 13, flexDirection: "row", alignItems: "center", backgroundColor: pressed ? C.press : "transparent" })
+    },
+      tile,
+      h(RN.View, { style: { flex: 1, minWidth: 0, paddingRight: 10 } },
+        h(RN.Text, { numberOfLines: 2, style: { color: C.text, fontSize: 16, fontWeight: "600", lineHeight: 21 } }, p.title),
+        p.subtitle ? h(RN.Text, { numberOfLines: 3, style: { color: C.sub, fontSize: 13, marginTop: 3, lineHeight: 18 } }, p.subtitle) : null),
+      p.trailing || null,
+      !p.last ? h(RN.View, { style: { position: "absolute", bottom: 0, left: key ? 63 : 16, right: 0, height: 1, backgroundColor: C.card2 } }) : null);
+  }
+  function CustomSwitch(p) {
+    const C = palette(), h = React.createElement, on = !!p.value;
+    const pos = React.useRef(new RN.Animated.Value(on ? 1 : 0)).current;
+    const col = React.useRef(new RN.Animated.Value(on ? 1 : 0)).current;
+    React.useEffect(() => {
+      RN.Animated.spring(pos, { toValue: on ? 1 : 0, speed: 24, bounciness: 5, useNativeDriver: true }).start();
+      RN.Animated.timing(col, { toValue: on ? 1 : 0, duration: 180, useNativeDriver: false }).start();
+    }, [on]);
+    return h(RN.Pressable, { accessibilityRole: "switch", accessibilityState: { checked: on }, onPress: () => p.onChange(!on), hitSlop: 10 },
+      h(RN.Animated.View, { style: { width: 52, height: 32, borderRadius: 16, padding: 3, justifyContent: "center", backgroundColor: col.interpolate({ inputRange: [0, 1], outputRange: [C.off, p.color || C.blurple] }) } },
+        h(RN.Animated.View, { style: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#FFFFFF", shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2, transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }] } })));
+  }
+  function CustomAction(p) {
+    const C = palette(), h = React.createElement, RED_ = "#ED4245";
+    const sc = React.useRef(new RN.Animated.Value(1)).current;
+    const to = (v) => RN.Animated.spring(sc, { toValue: v, speed: 40, bounciness: 0, useNativeDriver: true }).start();
+    const bg = p.danger ? (p.secondary ? hexA(RED_, 0.14) : RED_) : (p.secondary ? C.chip : C.blurple);
+    const fg = p.danger && p.secondary ? RED_ : (p.secondary ? C.text : "#FFFFFF");
+    return h(RN.Pressable, { onPress: p.onPress, disabled: p.disabled, onPressIn: () => to(0.97), onPressOut: () => to(1), accessibilityRole: "button" },
+      h(RN.Animated.View, { style: { minHeight: 50, borderRadius: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, marginTop: 10, backgroundColor: bg, opacity: p.disabled ? 0.45 : 1, transform: [{ scale: sc }] } },
+        h(RN.Text, { style: { color: fg, fontWeight: "700", fontSize: 16 } }, p.title)));
+  }
+  function CustomInput(p) {
+    const C = palette(), h = React.createElement;
+    const [focused, setFocused] = React.useState(false);
+    return h(RN.TextInput, {
+      ...p, placeholderTextColor: C.sub, underlineColorAndroid: "transparent", textAlignVertical: p.multiline ? "top" : "center",
+      onFocus: (e) => { setFocused(true); if (p.onFocus) p.onFocus(e); },
+      onBlur: (e) => { setFocused(false); if (p.onBlur) p.onBlur(e); },
+      style: [{ minHeight: 50, borderRadius: 14, borderWidth: 1.5, borderColor: focused ? C.blurple : C.card2, backgroundColor: C.bg, color: C.text, paddingHorizontal: 15, fontSize: 16 }, p.style]
+    });
+  }
+  function KitHero(p) {
+    const C = palette(), h = React.createElement, accent = p.accent || C.blurple;
+    const stats = (p.stats || []).filter(Boolean);
+    const enter = React.useRef(new RN.Animated.Value(0)).current;
+    React.useEffect(() => { RN.Animated.spring(enter, { toValue: 1, speed: 14, bounciness: 6, useNativeDriver: true }).start(); }, []);
+    return h(RN.Animated.View, { style: { borderRadius: 26, backgroundColor: C.card, borderWidth: 1, borderColor: hexA(accent, 0.4), padding: 18, marginBottom: 24, overflow: "hidden", opacity: enter, transform: [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] } },
+      h(RN.View, { pointerEvents: "none", style: { position: "absolute", top: -60, right: -50, width: 190, height: 190, borderRadius: 95, backgroundColor: hexA(accent, 0.16) } }),
+      h(RN.View, { pointerEvents: "none", style: { position: "absolute", bottom: -70, left: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: hexA(accent, 0.08) } }),
+      h(RN.View, { style: { flexDirection: "row", alignItems: "center" } },
+        KitTile({ k: p.icon, size: 54, noMargin: true }),
+        h(RN.View, { style: { flex: 1, marginLeft: 14 } },
+          h(RN.Text, { numberOfLines: 2, style: { color: C.text, fontSize: 21, fontWeight: "800", letterSpacing: -0.2 } }, p.title),
+          p.subtitle ? h(RN.Text, { numberOfLines: 2, style: { color: C.sub, fontSize: 14, marginTop: 3, lineHeight: 19 } }, p.subtitle) : null)),
+      stats.length ? h(RN.View, { style: { flexDirection: "row", marginTop: 16 } }, ...stats.map((s, i) =>
+        h(RN.View, { key: "stat-" + i, style: { flex: 1, borderRadius: 15, backgroundColor: C.chip, paddingVertical: 11, paddingHorizontal: 12, marginRight: i === stats.length - 1 ? 0 : 8 } },
+          h(RN.Text, { numberOfLines: 1, adjustsFontSizeToFit: true, style: { color: C.text, fontSize: 19, fontWeight: "800" } }, String(s[1])),
+          h(RN.Text, { numberOfLines: 1, style: { color: C.sub, fontSize: 12, marginTop: 2, fontWeight: "600" } }, s[0])))) : null);
+  }
+  function KitGuide(p) {
+    const C = palette(), h = React.createElement;
+    const [open, setOpen] = React.useState(true);
+    const steps = p.steps || [];
+    return h(RN.View, { style: { marginTop: 4, marginBottom: 16, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2, overflow: "hidden" } },
+      h(RN.Pressable, { onPress: () => setOpen(!open), accessibilityRole: "button", accessibilityState: { expanded: open }, style: ({ pressed }) => ({ flexDirection: "row", alignItems: "center", padding: 16, backgroundColor: pressed ? C.press : "transparent" }) },
+        KitTile({ k: "guide", size: 34 }),
+        h(RN.View, { style: { flex: 1 } },
+          h(RN.Text, { style: { color: C.text, fontSize: 17, fontWeight: "800" } }, p.title || "Quick guide"),
+          h(RN.Text, { style: { color: C.sub, fontSize: 13, marginTop: 2 } }, steps.length + " short steps")),
+        h(RN.View, { style: { width: 24, alignItems: "center", justifyContent: "center" } }, KitChevron({ dir: open ? "up" : "down", color: C.sub, size: 9 }))),
+      open ? h(RN.View, { style: { paddingHorizontal: 16, paddingBottom: 6 } }, ...steps.map((s, i) =>
+        h(RN.View, { key: "guide-" + i, style: { flexDirection: "row", paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: C.card2 } },
+          h(RN.View, { style: { width: 26, height: 26, borderRadius: 13, backgroundColor: hexA(C.blurple, 0.2), alignItems: "center", justifyContent: "center", marginRight: 13, marginTop: 1 } },
+            h(RN.Text, { style: { color: C.blurple, fontSize: 13, fontWeight: "800" } }, String(i + 1))),
+          h(RN.View, { style: { flex: 1 } },
+            h(RN.Text, { style: { color: C.text, fontSize: 15, fontWeight: "700", marginBottom: 3 } }, s[0]),
+            h(RN.Text, { style: { color: C.sub, fontSize: 14, lineHeight: 20 } }, s[1]))))) : null);
+  }
+  function kitMenuPill(label) {
+    const C = palette(), h = React.createElement;
+    return h(RN.View, { style: { flexDirection: "row", alignItems: "center", backgroundColor: hexA(C.blurple, 0.16), borderRadius: 12, paddingHorizontal: 11, paddingVertical: 7, marginLeft: 6 } },
+      h(RN.Text, { numberOfLines: 1, style: { color: C.text, fontSize: 13, fontWeight: "700", maxWidth: 130 } }, String(label || "Select")),
+      h(RN.View, { style: { marginLeft: 6 } }, KitChevron({ dir: "down", color: C.blurple, size: 7 })));
+  }
+  /* ---- end shared kit ---- */
+
   function Settings() {
     rainStore.useStore();
     const [screen, setScreen] = React.useState("main");
@@ -821,8 +962,8 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
     const rowSet=new WeakSet(),sectionTitles=new WeakMap(),mark=(el)=>{rowSet.add(el);return el;},HEXCOLOR=/^#[0-9A-Fa-f]{6}$/;
     const Text=(props,...kids)=>h(RN.Text,props,...kids),rowIcon=(key)=>/color/.test(key)?"\u25C9":/capture|cache|message|history|nav|log/.test(key)?"\u25F7":/filter|search/.test(key)?"\u2315":/ignore/.test(key)?"\u2298":"\u2726";
     const Section=(title)=>{const m=h(RN.View,{key:"sec-"+title});sectionTitles.set(m,title);return m;};
-    const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:21,marginLeft:7}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:20,height:20,borderRadius:10,backgroundColor:v,borderWidth:1,borderColor:C.divider}}));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
-    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,trailing:(key==="capture-mode"||key==="retention")?h(RN.View,{style:{flexDirection:"row",alignItems:"center",backgroundColor:C.chip,borderRadius:10,borderWidth:1,borderColor:C.blurple,paddingHorizontal:9,paddingVertical:6,marginLeft:6}},h(RN.Text,{numberOfLines:1,style:{color:C.text,fontSize:12,fontWeight:"700",maxWidth:120}},String(right||"Select")),h(RN.Text,{style:{color:C.blurple,fontSize:16,fontWeight:"800",marginLeft:5}},"⌄")):valueChip(right)}));
+    const valueChip=(r)=>{if(!r)return null;if(r===">"||r==="\u203A")return Text({style:{color:C.sub,fontSize:24,marginLeft:7,fontWeight:"300"}},"\u203A");const v=String(r);if(HEXCOLOR.test(v))return h(RN.View,{style:{flexDirection:"row",alignItems:"center",marginLeft:8}},h(RN.View,{style:{width:20,height:20,borderRadius:10,backgroundColor:v,borderWidth:1,borderColor:C.divider}}));return Text({style:{color:C.sub,fontSize:14,marginLeft:8},numberOfLines:1},v);};
+    const PressRow=(key,label,sub,onPress,right)=>mark(h(CustomRow,{key,title:label,subtitle:sub,onPress,noIcon:/^(logged-|ghost-history-|ignored-|saved-ping-filter-|filter-use-|filter-delete-)/.test(String(key)),trailing:(key==="capture-mode"||key==="retention")?kitMenuPill(right):valueChip(right)}));
     const switchRow=(key,label,sub,value,change)=>mark(h(CustomRow,{key,title:label,subtitle:sub,trailing:h(CustomSwitch,{value,onChange:change})}));
     const Btn=(key,title,onPress,color)=>mark(h(CustomAction,{key,title:key==="back"?"\u2039  Back":title,onPress,secondary:key!=="clear"&&key!=="test",danger:color===RED}));
     const Empty=(key,t)=>Text({key,style:{color:C.sub,fontSize:14,lineHeight:20,paddingHorizontal:14,paddingVertical:14,textAlign:"center"}},t),Title=(key,t)=>Text({key,style:{color:C.text,fontSize:22,fontWeight:"800",paddingTop:8,paddingBottom:8}},t);
@@ -1004,9 +1145,9 @@ function CustomRow(p){const C=palette(),h=React.createElement,icon=p.icon||setti
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    const helpFooter = screen === "main" ? h(RN.View, { key: "settings-guide", style: { marginTop: 18, marginBottom: 12, padding: 16, borderRadius: 15, backgroundColor: C.card, borderWidth: 1, borderColor: C.card2 } }, Text({ style: { color: C.text, fontSize: 20, fontWeight: "800", marginBottom: 8 } }, "Quick guide"), h(RN.Text, { key: "guide-0", style: { color: C.sub, fontSize: 15, lineHeight: 21, marginTop: 0 } }, "DM history records received messages. In servers, it records mentions and replies only."), h(RN.Text, { key: "guide-1", style: { color: C.sub, fontSize: 15, lineHeight: 21, marginTop: 5 } }, "Capture mode All watches received events; Loaded limits capture to loaded conversations."), h(RN.Text, { key: "guide-2", style: { color: C.sub, fontSize: 15, lineHeight: 21, marginTop: 5 } }, "Enable Track @everyone if you want those pings recorded; it is off by default."), h(RN.Text, { key: "guide-3", style: { color: C.sub, fontSize: 15, lineHeight: 21, marginTop: 5 } }, "Choose how long history is kept. Older entries are removed when their retention expires.")) : null;
-    const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1 } }, "Ghost Ping Logger " + BUILD);
-    const header = screen === "main" ? [Text({ key: "header-title", style: { color: C.text, fontSize: 25, fontWeight: "800", marginBottom: 5 } }, "Ghost Ping Logger"), Text({ key: "header-subtitle", style: { color: C.sub, fontSize: 14, marginBottom: 20 } }, "Review deleted pings and message capture")] : [];
+    const helpFooter = screen === "main" ? h(KitGuide, { key: "settings-guide", title: "Quick guide", steps: [["What counts as a ghost ping","A message that mentioned you or replied to you and was then deleted, or edited so the mention is gone. @everyone is only tracked if you turn on Track @everyone."],["Alerts","When one is detected you get an alert with Jump to message and Dismiss. Turn the alert, or red usernames on ghost pings, on or off under Alerts."],["Capture mode","All watches every event the app receives; Loaded limits capture to conversations that are already loaded. In DMs the history records received messages, in servers only mentions and replies. Messages that never reached this device can't be logged."],["Browse the history","Open Ghost ping history to see entries marked Edited or Deleted. Search by author, channel, server or text, filter by date and save the filters you reuse. Tap an entry to jump to it or remove it."],["Retention and cache","Remember new messages keeps a limited recent cache, so a deleted message can still be recognized after a restart. Choose how long history is kept; older entries are removed automatically."]] }) : null;
+    const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1, opacity: 0.7 } }, "Ghost Ping Logger " + BUILD);
+    const header = screen === "main" ? [h(KitHero, { key: "hero", icon: "at", title: "Ghost Ping Logger", subtitle: "Review deleted pings and message capture", stats: [["Ghost pings", pings.length], ["Capture", captureModeLabel()], ["Status", cfg().enabled ? "Active" : "Paused"]] })] : [];
     return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), helpFooter, buildLabel));
   }
 
