@@ -11,7 +11,7 @@ const implementation = (() => {
   const { FluxDispatcher, React, ReactNative: RN } = metro.common;
 
   const MAX_PINGS = 200;
-  const DEFAULT_RECENT_MESSAGES = 5000;
+  const DEFAULT_RECENT_MESSAGES = 1000;
   const MIN_RECENT_MESSAGES = 100;
   const MAX_RECENT_MESSAGES = 20000;
   const MAX_RECENT_CACHE_BYTES = 8 * 1024 * 1024;
@@ -41,6 +41,7 @@ const implementation = (() => {
   const retainedPings = new Map();
   let MessageStore;
   let UserStore;
+  let GuildMemberStore;
   let ChannelStore;
   let SelectedChannelStore;
   let ThemeStore;
@@ -119,6 +120,7 @@ const implementation = (() => {
       } : previous && previous.author,
       mentions: Array.isArray(merged.mentions) ? merged.mentions.map((user) => typeof user === "string" ? user : user && user.id).filter(Boolean) : previous && previous.mentions || [],
       mentionEveryone: !!(merged.mention_everyone === true || merged.mentionEveryone === true || previous && previous.mentionEveryone),
+      mentionRoles: Array.isArray(merged.mention_roles) ? merged.mention_roles.map(String) : Array.isArray(merged.mentionRoles) ? merged.mentionRoles.map(String) : previous && previous.mentionRoles || [],
 
       mentioned: typeof merged.mentioned === "boolean" ? merged.mentioned : previous && previous.mentioned,
       messageReference: reference ? {
@@ -288,14 +290,13 @@ const implementation = (() => {
   }
 
   function mentionsMe(msg, me) {
+    if (msg.mentioned === true) return true;
     try {
       for (const m of msg.mentions || []) {
         if ((typeof m === "string" ? m : m && m.id) === me) return true;
       }
     } catch (_) {}
-    // Discord also flags @everyone/@here as "mentioned"; those only count when Track @everyone is on.
-    const everyone = msg.mention_everyone === true || msg.mentionEveryone === true;
-    return msg.mentioned === true && !everyone;
+    return false;
   }
 
   function addPing(entry) {
@@ -310,6 +311,18 @@ const implementation = (() => {
     return entry;
   }
 
+  function mentionsMyRole(msg, channelId) {
+    const roles = msg.mention_roles || msg.mentionRoles;
+    if (!Array.isArray(roles) || !roles.length) return false;
+    try {
+      GuildMemberStore = GuildMemberStore || findByStoreName("GuildMemberStore");
+      const guildId = msg.guild_id || msg.guildId || guildOf(channelId);
+      const member = guildId && GuildMemberStore && GuildMemberStore.getMember(guildId, myId());
+      const mine = member && member.roles;
+      return !!mine && roles.some((role) => mine.includes(String(role)));
+    } catch (_) { return false; }
+  }
+
   function pingKindFor(msg, channelId) {
     const s = cfg();
     if (!s.enabled) return null;
@@ -319,7 +332,7 @@ const implementation = (() => {
     let kind = null;
     if (!kind && s.pingReplies && isReplyToMe(msg, channelId, me)) kind = "reply";
     if (!kind && s.pingMentions && mentionsMe(msg, me)) kind = "mention";
-    if (!kind && s.trackEveryone && (msg.mention_everyone === true || msg.mentionEveryone === true)) kind = "mention";
+    if (!kind && s.trackEveryone && (msg.mention_everyone === true || msg.mentionEveryone === true || mentionsMyRole(msg, channelId))) kind = "mention";
     return kind;
   }
 
@@ -700,7 +713,17 @@ const implementation = (() => {
     const C = palette(), h = React.createElement;
     const kids = React.Children.toArray(p.children);
     const any = kids.some((k) => k && k.type === CustomRow && kitIconKey(k.props));
-    const out = kids.map((k) => (k && k.type === CustomRow && any && !k.props.noIcon && !kitIconKey(k.props)) ? React.cloneElement(k, { __fallbackIcon: true }) : k);
+    const isAction = (k) => !!k && k.type === CustomAction;
+    if (kids.length && kids.every(isAction)) {
+      return h(RN.View, { style: { marginBottom: p.title ? 24 : 12 } },
+        p.title ? h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginHorizontal: 6, marginBottom: 10 } },
+          h(RN.View, { style: { width: 3, height: 14, borderRadius: 2, backgroundColor: C.blurple, marginRight: 8 } }),
+          h(RN.Text, { numberOfLines: 1, style: { color: C.text, fontSize: 15, fontWeight: "700", flexShrink: 1 } }, p.title)) : null,
+        ...kids.map((k, i) => React.cloneElement(k, { top: i === 0 ? 0 : 10 })));
+    }
+    const out = kids.map((k, i) => isAction(k)
+      ? h(RN.View, { key: "act-" + i, style: { paddingHorizontal: 12, paddingTop: i === 0 ? 12 : 0, paddingBottom: 12 } }, React.cloneElement(k, { top: 0 }))
+      : (k && k.type === CustomRow && any && !k.props.noIcon && !kitIconKey(k.props)) ? React.cloneElement(k, { __fallbackIcon: true }) : k);
     return h(RN.View, { style: { marginBottom: p.compact ? 14 : 24 } },
       p.title ? h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginHorizontal: 6, marginBottom: 10 } },
         h(RN.View, { style: { width: 3, height: 14, borderRadius: 2, backgroundColor: C.blurple, marginRight: 8 } }),
@@ -712,11 +735,8 @@ const implementation = (() => {
     const C = palette(), h = React.createElement;
     const key = p.__fallbackIcon ? (kitIconKey(p) || "gear") : kitIconKey(p);
     const tile = key ? KitTile({ k: key, size: 34 }) : null;
-    const tr = p.trailing;
-    const flip = !p.onPress && tr && tr.type === CustomSwitch && tr.props && typeof tr.props.onChange === "function" ? () => tr.props.onChange(!tr.props.value) : null;
-    const press = p.onPress || flip;
     return h(RN.Pressable, {
-      accessibilityRole: press ? "button" : undefined, onPress: press || undefined, disabled: !press,
+      accessibilityRole: p.onPress ? "button" : undefined, onPress: p.onPress, disabled: !p.onPress,
       style: ({ pressed }) => ({ minHeight: 66, paddingHorizontal: 16, paddingVertical: 13, flexDirection: "row", alignItems: "center", backgroundColor: pressed ? C.press : "transparent" })
     },
       tile,
@@ -729,14 +749,12 @@ const implementation = (() => {
   function CustomSwitch(p) {
     const C = palette(), h = React.createElement, on = !!p.value;
     const pos = React.useRef(new RN.Animated.Value(on ? 1 : 0)).current;
-    const col = React.useRef(new RN.Animated.Value(on ? 1 : 0)).current;
     React.useEffect(() => {
       RN.Animated.spring(pos, { toValue: on ? 1 : 0, speed: 24, bounciness: 5, useNativeDriver: true }).start();
-      RN.Animated.timing(col, { toValue: on ? 1 : 0, duration: 180, useNativeDriver: false }).start();
     }, [on]);
-    return h(RN.Pressable, { accessibilityRole: "switch", accessibilityState: { checked: on }, onPress: () => p.onChange(!on), hitSlop: 10 },
-      h(RN.Animated.View, { style: { width: 52, height: 32, borderRadius: 16, padding: 3, justifyContent: "center", backgroundColor: col.interpolate({ inputRange: [0, 1], outputRange: [C.off, p.color || C.blurple] }) } },
-        h(RN.Animated.View, { style: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#FFFFFF", shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2, transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }] } })));
+    return h(RN.Pressable, { accessibilityRole: "switch", accessibilityState: { checked: on }, onPress: () => p.onChange(!on), hitSlop: 10,
+      style: { width: 52, height: 32, borderRadius: 16, padding: 3, justifyContent: "center", backgroundColor: on ? (p.color || C.blurple) : C.off } },
+      h(RN.Animated.View, { style: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#FFFFFF", shadowColor: "#000000", shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2, transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }] } }));
   }
   function CustomAction(p) {
     const C = palette(), h = React.createElement, RED_ = "#ED4245";
@@ -745,8 +763,8 @@ const implementation = (() => {
     const bg = p.danger ? (p.secondary ? hexA(RED_, 0.14) : RED_) : (p.secondary ? C.chip : C.blurple);
     const fg = p.danger && p.secondary ? RED_ : (p.secondary ? C.text : "#FFFFFF");
     return h(RN.Pressable, { onPress: p.onPress, disabled: p.disabled, onPressIn: () => to(0.97), onPressOut: () => to(1), accessibilityRole: "button" },
-      h(RN.Animated.View, { style: { minHeight: 50, borderRadius: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, marginTop: 10, backgroundColor: bg, opacity: p.disabled ? 0.45 : 1, transform: [{ scale: sc }] } },
-        h(RN.Text, { style: { color: fg, fontWeight: "700", fontSize: 16 } }, p.title)));
+      h(RN.Animated.View, { style: { minHeight: p.compact ? 42 : 50, borderRadius: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: p.compact ? 12 : 18, marginTop: p.top != null ? p.top : 10, backgroundColor: bg, opacity: p.disabled ? 0.45 : 1, transform: [{ scale: sc }] } },
+        h(RN.Text, { numberOfLines: 1, style: { color: fg, fontWeight: "700", fontSize: p.compact ? 15 : 16 } }, p.title)));
   }
   function CustomInput(p) {
     const C = palette(), h = React.createElement;
@@ -795,6 +813,82 @@ const implementation = (() => {
           h(RN.View, { style: { flex: 1 } },
             h(RN.Text, { style: { color: C.text, fontSize: 15, fontWeight: "700", marginBottom: 3 } }, s[0]),
             h(RN.Text, { style: { color: C.sub, fontSize: 14, lineHeight: 20 } }, s[1]))))) : null);
+  }
+  function kitIso(d) { const z = (n) => (n < 10 ? "0" : "") + n; return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()); }
+  function kitRange(key) {
+    const now = new Date(), to = kitIso(now);
+    if (key === "today") return { from: to, to };
+    if (key === "7d") return { from: kitIso(new Date(now.getTime() - 6 * 86400000)), to };
+    if (key === "30d") return { from: kitIso(new Date(now.getTime() - 29 * 86400000)), to };
+    return { from: "", to: "" };
+  }
+  function kitRangeKey(from, to) {
+    if (!from && !to) return "all";
+    for (const k of ["today", "7d", "30d"]) { const r = kitRange(k); if (r.from === from && r.to === to) return k; }
+    return "custom";
+  }
+  function kitValidDate(v) {
+    const s = String(v || "").trim();
+    return !s || (/^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s + "T00:00:00")));
+  }
+  function KitSearchIcon(p) {
+    const h = React.createElement;
+    return h(RN.View, { style: { width: 18, height: 18 } },
+      h(RN.View, { style: { position: "absolute", left: 1, top: 1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: p.color } }),
+      h(RN.View, { style: { position: "absolute", left: 11, top: 13, width: 7, height: 2, borderRadius: 1, backgroundColor: p.color, transform: [{ rotate: "45deg" }] } }));
+  }
+  function KitChip(p) {
+    const C = palette(), h = React.createElement;
+    return h(RN.Pressable, { onPress: p.onPress, accessibilityRole: "button", accessibilityState: { selected: !!p.active }, hitSlop: 4,
+      style: ({ pressed }) => ({ height: 34, borderRadius: 17, paddingHorizontal: 14, marginRight: p.flush ? 0 : 8, marginBottom: p.flush ? 0 : 8, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: p.active ? C.blurple : C.chip, opacity: pressed ? 0.8 : 1 }) },
+      h(RN.Text, { numberOfLines: 1, style: { color: p.active ? "#FFFFFF" : C.text, fontSize: 14, fontWeight: "600" } }, p.label),
+      p.badge ? h(RN.View, { style: { marginLeft: 7, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: p.active ? "rgba(255,255,255,0.28)" : hexA(C.blurple, 0.22), alignItems: "center", justifyContent: "center" } },
+        h(RN.Text, { style: { color: p.active ? "#FFFFFF" : C.blurple, fontSize: 12, fontWeight: "800" } }, String(p.badge))) : null);
+  }
+  function KitFilter(p) {
+    const C = palette(), h = React.createElement;
+    const query = String(p.query || ""), from = String(p.from || ""), to = String(p.to || "");
+    const rangeKey = kitRangeKey(from, to);
+    const hasQuery = !!query.trim(), hasDates = !!(from || to), active = hasQuery || hasDates;
+    const [open, setOpen] = React.useState(!p.collapsible || active);
+    const [custom, setCustom] = React.useState(rangeKey === "custom");
+    const saved = Array.isArray(p.saved) ? p.saved : [];
+    const set = (patch) => p.onChange({ query, from, to, ...patch });
+    const label = (t) => h(RN.Text, { style: { color: C.sub, fontSize: 12, fontWeight: "700", letterSpacing: 0.3, marginTop: 14, marginBottom: 8 } }, t);
+    const dateBox = (name, key, value) => h(RN.View, { key, style: { flex: 1, marginRight: key === "from" ? 8 : 0 } },
+      h(RN.Text, { style: { color: C.sub, fontSize: 12, fontWeight: "600", marginBottom: 6 } }, name),
+      h(CustomInput, { value, placeholder: "YYYY-MM-DD", onChangeText: (v) => set({ [key]: v }), autoCorrect: false, autoCapitalize: "none", keyboardType: "numbers-and-punctuation", style: kitValidDate(value) ? { minHeight: 44 } : { minHeight: 44, borderColor: "#ED4245" } }));
+    const showBody = open || !p.collapsible;
+    const chips = [["all", "All time"], ["today", "Today"], ["7d", "7 days"], ["30d", "30 days"]];
+    return h(RN.View, { style: { marginBottom: 18 } },
+      h(RN.View, { style: { backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: active ? hexA(C.blurple, 0.6) : C.card2, overflow: "hidden" } },
+        h(RN.View, { style: { flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 8 } },
+          KitSearchIcon({ color: C.sub }),
+          h(RN.TextInput, { value: query, placeholder: p.placeholder || "Search author, channel, server or text", placeholderTextColor: C.sub, onChangeText: (v) => set({ query: v }), autoCorrect: false, autoCapitalize: "none", returnKeyType: "search", underlineColorAndroid: "transparent", style: { flex: 1, color: C.text, fontSize: 16, paddingVertical: 14, paddingHorizontal: 11 } }),
+          query ? h(RN.Pressable, { onPress: () => set({ query: "" }), hitSlop: 8, accessibilityLabel: "Clear search", style: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.chip, alignItems: "center", justifyContent: "center", marginRight: 6 } },
+            h(RN.Text, { style: { color: C.text, fontSize: 16, fontWeight: "700", marginTop: -1 } }, "\u00D7")) : null,
+          p.collapsible ? KitChip({ label: "Filters", flush: true, active: open, badge: hasDates ? 1 : 0, onPress: () => setOpen(!open) }) : null),
+        showBody ? h(RN.View, { style: { paddingHorizontal: 16, paddingBottom: 14, borderTopWidth: 1, borderTopColor: C.card2 } },
+          label("PERIOD"),
+          h(RN.View, { style: { flexDirection: "row", flexWrap: "wrap" } },
+            ...chips.map(([k, t]) => h(RN.View, { key: k }, KitChip({ label: t, active: !custom && rangeKey === k, onPress: () => { setCustom(false); set(kitRange(k)); } }))),
+            h(RN.View, { key: "custom" }, KitChip({ label: "Custom", active: custom || rangeKey === "custom", onPress: () => setCustom(true) }))),
+          (custom || rangeKey === "custom") ? h(RN.View, { style: { flexDirection: "row", marginBottom: 4 } }, dateBox("From", "from", from), dateBox("To", "to", to)) : null,
+          h(RN.View, { style: { flexDirection: "row", marginTop: 10 } },
+            h(RN.View, { style: { flex: 1, marginRight: 6 } }, h(CustomAction, { title: "Clear", secondary: true, compact: true, top: 0, disabled: !active, onPress: () => { setCustom(false); p.onChange({ query: "", from: "", to: "" }); } })),
+            h(RN.View, { style: { flex: 1, marginLeft: 6 } }, h(CustomAction, { title: "Save filter", compact: true, top: 0, disabled: !active || !p.onSave, onPress: () => p.onSave && p.onSave() }))),
+          label("SAVED FILTERS"),
+          saved.length ? h(RN.View, null, ...saved.map((item, i) => {
+            const bits = [item.query, (item.from || item.to) ? ((item.from || "…") + " → " + (item.to || "…")) : ""].filter(Boolean).join("  ·  ");
+            return h(RN.View, { key: "saved-" + i, style: { flexDirection: "row", alignItems: "center", backgroundColor: C.chip, borderRadius: 14, marginBottom: 8, overflow: "hidden" } },
+              h(RN.Pressable, { onPress: () => p.onApplySaved && p.onApplySaved(item), style: ({ pressed }) => ({ flex: 1, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: pressed ? C.press : "transparent" }) },
+                h(RN.Text, { numberOfLines: 1, style: { color: C.text, fontSize: 15, fontWeight: "700" } }, item.name || "Saved filter"),
+                bits ? h(RN.Text, { numberOfLines: 1, style: { color: C.sub, fontSize: 13, marginTop: 2 } }, bits) : null),
+              h(RN.Pressable, { onPress: () => p.onDeleteSaved && p.onDeleteSaved(i, item), hitSlop: 6, accessibilityLabel: "Delete saved filter", style: { width: 44, alignSelf: "stretch", alignItems: "center", justifyContent: "center" } },
+                h(RN.Text, { style: { color: C.sub, fontSize: 20, fontWeight: "600" } }, "\u00D7")));
+          })) : h(RN.Text, { style: { color: C.sub, fontSize: 13, lineHeight: 18 } }, "Nothing saved yet. Set up a search and tap Save filter to reuse it later.")) : null),
+      p.total != null ? h(RN.Text, { style: { color: active ? C.blurple : C.sub, fontSize: 13, fontWeight: "600", marginTop: 10, marginLeft: 8 } },
+        active ? (p.matches + " of " + p.total + " match") : (p.total + " in total")) : null);
   }
   function kitMenuPill(label) {
     const C = palette(), h = React.createElement;
@@ -927,32 +1021,23 @@ const implementation = (() => {
       content = [
         Btn("back", "< Back", () => { setScreen("main"); setLimit(PAGE); }),
         Title("title", "Ghost pings (" + filteredPings.length + ")"),
-        mark(h(RN.View, { key: "history-filter-fields", style: { paddingHorizontal: 14, paddingVertical: 7 } },
-          h(RN.Text, { style: { color: C.sub, fontSize: 12, fontWeight: "700", marginBottom: 6 } }, "Search user, channel, server, or message"),
-          h(CustomInput, { value: historyQuery, placeholder: "Name, #channel, server, or text", onChangeText: (value) => { setHistoryQuery(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none", style: { marginBottom: 8 } }),
-          h(RN.View, { style: { flexDirection: "row" } },
-            h(RN.View, { style: { flex: 1, marginRight: 5 } }, h(CustomInput, { value: historyFrom, placeholder: "From · YYYY-MM-DD", onChangeText: (value) => { setHistoryFrom(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none" })),
-            h(RN.View, { style: { flex: 1, marginLeft: 5 } }, h(CustomInput, { value: historyTo, placeholder: "To · YYYY-MM-DD", onChangeText: (value) => { setHistoryTo(value); setLimit(PAGE); }, autoCorrect: false, autoCapitalize: "none" }))),
-          (needle || historyFrom || historyTo) ? h(RN.Pressable, { onPress: () => { setHistoryQuery(""); setHistoryFrom(""); setHistoryTo(""); setLimit(PAGE); }, style: { alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 4 } }, h(RN.Text, { style: { color: C.blurple, fontWeight: "700" } }, "Clear filters")) : null)),
+        h(KitFilter, { key: "kit-filter", collapsible: true, query: historyQuery, from: historyFrom, to: historyTo, matches: filteredPings.length, total: pings.length,
+          saved: Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [],
+          onChange: (next) => { setHistoryQuery(next.query); setHistoryFrom(next.from); setHistoryTo(next.to); setLimit(PAGE); },
+          onSave: () => {
+            try {
+              openNativeInputAlert({ id: "gpl-save-history-filter", title: "Save history filter", content: "Give this search a name.", onSave: (name) => {
+                const cleanName = String(name || "").trim().slice(0, 40);
+                if (!cleanName) return;
+                const saved = Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [];
+                cfg().savedPingFilters = [{ name: cleanName, query: historyQuery, from: historyFrom, to: historyTo }, ...saved.filter((item) => item.name !== cleanName)].slice(0, 20);
+                refreshUI();
+              } });
+            } catch (_) { toast("Could not open saved filter"); }
+          },
+          onApplySaved: (item) => { setHistoryQuery(item.query || ""); setHistoryFrom(item.from || ""); setHistoryTo(item.to || ""); setLimit(PAGE); },
+          onDeleteSaved: (index, item) => ask("Delete saved filter?", item.name || "Saved filter", [{ text: "Delete", style: "destructive", onPress: () => { cfg().savedPingFilters = (Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : []).filter((_, i) => i !== index); refreshUI(); } }]) }),
       ];
-      content.push(Btn("save-filter", "Save current filter", () => {
-        try {
-          openNativeInputAlert({ id: "gpl-save-history-filter", title: "Save history filter", content: "Give this search a name.", onSave: (name) => {
-            const cleanName = String(name || "").trim().slice(0, 40);
-            if (!cleanName) return;
-            const saved = Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [];
-            cfg().savedPingFilters = [{ name: cleanName, query: historyQuery, from: historyFrom, to: historyTo }, ...saved.filter((item) => item.name !== cleanName)].slice(0, 20);
-            refreshUI();
-          } });
-        } catch (_) { toast("Could not open saved filter"); }
-      }));
-      const savedFilters = Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : [];
-      savedFilters.forEach((item, index) => content.push(PressRow("saved-ping-filter-" + index, item.name || "Saved filter", "Tap to apply", () => {
-        ask(item.name || "Saved filter", "Apply this saved search or remove it.", [
-          { text: "Apply", onPress: () => { setHistoryQuery(item.query || ""); setHistoryFrom(item.from || ""); setHistoryTo(item.to || ""); setLimit(PAGE); refreshUI(); } },
-          { text: "Remove", style: "destructive", onPress: () => { cfg().savedPingFilters = (Array.isArray(cfg().savedPingFilters) ? cfg().savedPingFilters : []).filter((_, i) => i !== index); refreshUI(); } },
-        ]);
-      })));
       if (filteredPings.length) {
         content.push(Btn("clear", "Clear history", () => {
           ask("Clear ghost ping history?", "This removes every saved ghost ping.", [
@@ -986,9 +1071,8 @@ const implementation = (() => {
     } else {
       content = [
         Section("Detection"),
-        Switch("enabled", "Ghost ping logger", "Notify when a ping is deleted or edited out of a message"),
         Switch("pingMentions", "Mentions", "Messages that mentioned you"),
-        Switch("trackEveryone", "Track @everyone", "Include messages that mention everyone in this server.", (v) => { cfg().trackEveryone = v; refreshUI(); }),
+        Switch("trackEveryone", "Track @everyone", "Also include @here and roles you have", (v) => { cfg().trackEveryone = v; refreshUI(); }),
         Switch("pingReplies", "Replies", "Replies to your messages"),
         Switch("skipBots", "Ignore bots", "Do not report deleted bot messages"),
         Section("Alerts"),
@@ -1010,9 +1094,9 @@ const implementation = (() => {
         Btn("test", "Send a test ghost ping", () => { addTestPing(); refreshUI(); }),
       ];
     }
-    const helpFooter = screen === "main" ? h(KitGuide, { key: "settings-guide", title: "Quick guide", steps: [["What counts as a ghost ping","A message that mentioned you or replied to you and was then deleted, or edited so the mention is gone. @everyone is only tracked if you turn on Track @everyone."],["Alerts","When one is detected you get an alert with Jump to message and Dismiss. Turn the alert, or red usernames on ghost pings, on or off under Alerts."],["Capture mode","All watches every event the app receives; Loaded limits capture to conversations that are already loaded. In DMs the history records received messages, in servers only mentions and replies. Messages that never reached this device can't be logged."],["Browse the history","Open Ghost ping history to see entries marked Edited or Deleted. Search by author, channel, server or text, filter by date and save the filters you reuse. Tap an entry to jump to it or remove it."],["Retention and cache","Remember new messages keeps a limited recent cache, so a deleted message can still be recognized after a restart. Choose how long history is kept; older entries are removed automatically."]] }) : null;
+    const helpFooter = screen === "main" ? h(KitGuide, { key: "settings-guide", title: "Quick guide", steps: [["What counts as a ghost ping","A message that mentioned you or replied to you and was then deleted, or edited so the mention is gone. Track @everyone also covers @everyone, @here and any role you have."],["Alerts","When one is detected you get an alert with Jump to message and Dismiss. Turn the alert, or red usernames on ghost pings, on or off under Alerts."],["Capture mode","All watches every event the app receives; Loaded limits capture to conversations that are already loaded. In DMs the history records received messages, in servers only mentions and replies. Messages that never reached this device can't be logged."],["Browse the history","Open Ghost ping history to see entries marked Edited or Deleted. Use the search bar and the Filters button to narrow by text, author, channel, server or date, and save the filters you reuse. Tap an entry to jump to it or remove it."],["Retention and cache","Remember new messages keeps a limited recent cache, so a deleted message can still be recognized after a restart. Choose how long history is kept; older entries are removed automatically."]] }) : null;
     const buildLabel = Text({ key: "build", style: { color: C.sub, fontSize: 12, textAlign: "center", marginTop: 1, opacity: 0.7 } }, "Ghost Ping Logger " + BUILD);
-    const header = screen === "main" ? [h(KitHero, { key: "hero", icon: "at", title: "Ghost Ping Logger", subtitle: "Review deleted pings and message capture", stats: [["Ghost pings", pings.length], ["Capture", captureModeLabel()], ["Status", cfg().enabled ? "Active" : "Paused"]] })] : [];
+    const header = screen === "main" ? [h(KitHero, { key: "hero", icon: "at", title: "Ghost Ping Logger", subtitle: "Review deleted pings and message capture", stats: [["Ghost pings", pings.length], ["Capture", captureModeLabel()], ["Cache", String(recentMessageLimit())]] })] : [];
     return h(RN.Animated.View, { style: { flex: 1, opacity: screenProgress, transform: [{ translateY: screenProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] } }, h(RN.ScrollView, { key: screen, style: { flex: 1 }, keyboardShouldPersistTaps: "handled", contentContainerStyle: { padding: 16, paddingBottom: 42 } }, ...header, ...compose(content), helpFooter, buildLabel));
   }
 
@@ -1021,8 +1105,15 @@ const implementation = (() => {
     receivedDMsThisSession = 0;
     receivedChannelsThisSession.clear();
     const s = cfg();
-    const defaults = { enabled: true, pingMentions: true, trackEveryone: false, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, rememberReceivedMessages: true, redName: true };
+    const defaults = { enabled: true, pingMentions: true, trackEveryone: true, pingReplies: true, skipBots: true, showToast: true, retentionDays: 0, captureMode: "expanded", maxCachedMessages: DEFAULT_RECENT_MESSAGES, rememberReceivedMessages: true, redName: true };
     for (const k of Object.keys(defaults)) if (s[k] === undefined) s[k] = defaults[k];
+    if (s.defaultsV2 !== 1) {
+      s.pingMentions = true; s.trackEveryone = true; s.pingReplies = true; s.skipBots = true; s.showToast = true; s.redName = true;
+      s.rememberReceivedMessages = true; s.captureMode = "expanded";
+      if (s.maxCachedMessages === undefined || Number(s.maxCachedMessages) === 5000) s.maxCachedMessages = DEFAULT_RECENT_MESSAGES;
+      s.defaultsV2 = 1;
+    }
+    s.enabled = true;
     if (s.captureModeDefaultMigration !== 1) { s.captureMode = "expanded"; s.captureModeDefaultMigration = 1; }
     if (s.captureMode !== "loaded" && s.captureMode !== "expanded") s.captureMode = "expanded";
 
