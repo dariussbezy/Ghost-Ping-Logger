@@ -14,13 +14,12 @@ Version **1.0.0-beta** targets Discord **352.6** and Valenced Plugin API **1**.
 
 ## What this beta includes
 
-- Detection for direct, role and everyone/here mentions and replies. Settings let you choose which types to track.
-- Native Discord notifications, a searchable local history and details with **Jump to message** or **Open channel**.
-- Optional local persistence of recent ping candidates and history. History stays in memory by default. You can clear it in Settings.
-- Optional cooperation with [Adv. Message Logger](https://github.com/dariussbezy/Adv.-Message-Logger). This plugin works by itself and can use AML's recent snapshots when both are active.
+- Detection for direct, role and everyone/here mentions and replies, with a setting for each type.
+- Native alerts with jump and dismiss actions, a test alert, and a searchable journal with saved filters and individual entry removal.
+- Optional in-chat retention of deleted ghost pings and red usernames. All or Loaded-only capture, a configurable recent cache, and separate save and clear controls for the journal and recent cache.
+- Optional cooperation with [Adv. Message Logger](https://github.com/dariussbezy/Adv.-Message-Logger). Ghost Ping Logger works on its own and can use AML's recent snapshots when both are active.
 
-This beta shows ghost pings in the journal and notifications. It does not retain deleted rows or recolor usernames in chat. Detection depends on messages and mention data received by this client. Logs are kept locally. Native mobile rendering still needs device testing.
-
+Detection uses message and mention data received by this Discord client. Retaining a deleted row requires the original message in Discord's cache. Logs stay on this device.
 ## Development
 
 Run `bun install --frozen-lockfile` and then `npm run publish:local` to build the ZIP and regenerate the index. Run `npm run lint:types` and `npm test` to check the build.

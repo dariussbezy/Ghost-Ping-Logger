@@ -42,14 +42,19 @@ export type Snapshot = {
   replyTo: string;
   seenAt: number;
 };
-export type Entry = { kind: "edited" | "deleted"; at: number; before: Snapshot; after?: string };
+export type Entry = { kind: "edited" | "deleted"; at: number; before: Snapshot; after?: string; test?: boolean };
 export const defaults = {
   logEdits: true, logDeletes: true, direct: true, roles: true, everyone: true,
   replies: true, skipBots: true, skipSelf: true, alerts: true, persist: false,
-  ignoredIds: "", retentionDays: 7,
+  ignoredIds: "", retentionDays: 7, rememberReceived: false,
+  captureMode: "all" as "all" | "loaded", cacheLimit: 250,
+  notifyEdited: false, notifyDeleted: false,
+  retainDeleted: true, showInlineEdits: true, colorDeletedUsername: true, redName: true,
+  deletedMessageColor: "#ED4245", editedMessageColor: "#A0A3AA", deletedNameColor: "#ED4245",
+  showDeletedTime: false, showEditTime: false, use12HourClock: false,
 };
 export type Settings = typeof defaults;
-export const SnapshotLimit = 250;
+export const MaxSnapshotLimit = 1000;
 export const EntryLimit = 200;
 const TextLimit = 1600;
 const SnapshotAge = 24 * 60 * 60 * 1000;
@@ -60,11 +65,12 @@ type Env = {
   me(channelId: string): { id: string; roles: string[] } | undefined;
   channel(channelId: string): { guild_id?: string; guildId?: string; type?: number } | undefined;
   reference(channelId: string, id: string): Message | undefined;
+  loaded?(channelId: string): boolean;
   record(entry: Entry): void;
   alert(entry: Entry, event: Event): void;
   changed?(): void;
 };
-type Cooperation = { aml?: { lookup: Lookup }; gpl?: { alerted(event: Event, id: string): boolean } };
+type Cooperation = { aml?: { lookup: Lookup }; gpl?: { alerted(event: Event, id: string): boolean; removeEdits?(channelId: string, id: string): void } };
 const bridge = globalThis as typeof globalThis & { __dariussLoggerBridgeV1?: Cooperation };
 export function cooperation() { return bridge.__dariussLoggerBridgeV1 ??= {}; }
 function matchIds(content: string, regex: RegExp) {
@@ -126,11 +132,16 @@ export function createEngine(mode: Mode, env: Env) {
       || (settings.roles && message.roles.some(id => me.roles.includes(id)));
   }
 
+  function trim() {
+    const limit = Math.max(25, Math.min(MaxSnapshotLimit, env.settings().cacheLimit));
+    while (recent.size > limit) recent.delete(recent.keys().next().value!);
+  }
+
   function remember(message: Snapshot) {
     const id = key(message.channelId, message.id);
     recent.delete(id);
     if (!skipped(message) && (mode === "aml" || pings(message))) recent.set(id, message);
-    while (recent.size > SnapshotLimit) recent.delete(recent.keys().next().value!);
+    trim();
   }
 
   const lookup: Lookup = (event, channelId, id) => {
@@ -158,7 +169,8 @@ export function createEngine(mode: Mode, env: Env) {
     const entry: Entry = { kind, at: Date.now(), before, after: after?.content };
     env.record(entry);
     const channelType = mode === "aml" && settings.alerts ? env.channel(before.channelId)?.type : undefined;
-    if (settings.alerts && (mode === "gpl" || channelType === 1 || channelType === 3)) {
+    if (settings.alerts && (mode === "gpl" ||
+      ((channelType === 1 || channelType === 3) && (kind === "edited" ? settings.notifyEdited : settings.notifyDeleted)))) {
       let ids = alertedEvents.get(event);
       if (!ids) alertedEvents.set(event, ids = new Set());
       ids.add(before.id);
@@ -169,7 +181,7 @@ export function createEngine(mode: Mode, env: Env) {
   function observe(event: Event, other?: Lookup) {
     const message = event.message;
     const channelId = event.channelId || message?.channel_id || message?.channelId;
-    if (!channelId) return;
+    if (!channelId || (env.settings().captureMode === "loaded" && !env.loaded?.(channelId))) return;
     if (event.type === "MESSAGE_CREATE" && message) {
       const captured = merge(message, channelId, event.guildId);
       if (captured) remember(captured);
@@ -199,10 +211,10 @@ export function createEngine(mode: Mode, env: Env) {
     alerted: (event: Event, id: string) => alertedEvents.get(event)?.has(id) ?? false,
     snapshot: () => [...recent.values()].filter(m => Date.now() - m.seenAt <= SnapshotAge),
     restore: (messages: Snapshot[]) => {
-      for (const message of messages.slice(-SnapshotLimit)) {
+      for (const message of messages.slice(-MaxSnapshotLimit)) {
         if (message?.id && message.channelId && Date.now() - message.seenAt <= SnapshotAge) remember(message);
       }
     },
-    clear: () => recent.clear(),
+    clear: () => recent.clear(), trim,
   };
 }

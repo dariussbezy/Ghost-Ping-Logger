@@ -53,3 +53,21 @@ test("GPL recognizes a reply embedded in Discord's message record after its sour
  assert.equal(rows.length,1);
  assert.equal(rows[0].before.replyTo,"me");
 });
+test("loaded capture ignores channels absent from Discord's loaded list",()=>{
+ const rows=[];
+ const e=createEngine("aml",{settings:()=>({...defaults,captureMode:"loaded"}),loaded:id=>id==="room",
+  me:()=>({id:"me",roles:[]}),channel:()=>undefined,reference:()=>undefined,record:x=>rows.push(x),alert:()=>{}});
+ e.observe({type:"MESSAGE_CREATE",message:{...message,channel_id:"unloaded"}});
+ e.observe({type:"MESSAGE_DELETE",id:"1",channelId:"unloaded"});
+ e.observe(create);e.observe(remove);
+ assert.deepEqual(rows.map(x=>x.before.channelId),["room"]);
+});
+test("reducing the cache limit keeps the most recent snapshots",()=>{
+ const settings={...defaults,cacheLimit:50};
+ const e=createEngine("aml",{settings:()=>settings,me:()=>undefined,channel:()=>undefined,reference:()=>undefined,record:()=>{},alert:()=>{}});
+ for(let i=1;i<=40;i++) e.observe({type:"MESSAGE_CREATE",message:{...message,id:String(i)}});
+ settings.cacheLimit=25;
+ e.trim();
+ assert.equal(e.snapshot().length,25);
+ assert.equal(e.snapshot()[0].id,"16");
+});
