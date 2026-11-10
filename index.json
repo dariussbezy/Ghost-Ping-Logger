@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "Ghost Ping Logger",
+  "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
+  "plugins": {
+    "dariuss.ghost-ping-logger": {
+      "name": "Ghost Ping Logger",
+      "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
+      "author": "dariuss",
+      "icon": "AtIcon",
+      "channels": {
+        "beta": "1.0.0-beta"
+      },
+      "versions": {
+        "1.0.0-beta": {
+          "url": "https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/refs/heads/main/pool/dariuss.ghost-ping-logger@1.0.0-beta.zip",
+          "sha256": "fab2baedd9eee3fab1ded701c36369b7b79b5b2f579180f01d851106b7a7f4f7",
+          "size": 5187,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {
+              "version": ">=352.6 <352.7"
+            }
+          }
+        }
+      }
+    }
+  }
+}
