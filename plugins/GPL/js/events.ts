@@ -15,6 +15,8 @@ export type Message = {
   mentionEveryone?: boolean;
   message_reference?: { message_id?: string; channel_id?: string } | null;
   messageReference?: { messageId?: string; channelId?: string } | null;
+  reference?: { messageId?: string; channelId?: string; message_id?: string; channel_id?: string } | null;
+  referencedMessage?: { author?: { id?: string }; message?: { author?: { id?: string } } } | null;
   referenced_message?: { author?: { id?: string } } | null;
 };
 export type Event = {
@@ -80,9 +82,10 @@ export function createEngine(mode: Mode, env: Env) {
     const changed = content !== undefined && content !== old?.content;
     const author = message.author;
     const ref = message.message_reference;
-    const refId = ref?.message_id || message.messageReference?.messageId;
-    const refChannel = ref?.channel_id || message.messageReference?.channelId || channelId;
-    const referenceAuthor = message.referenced_message?.author?.id ||
+    const refId = ref?.message_id || message.messageReference?.messageId || message.reference?.messageId || message.reference?.message_id;
+    const refChannel = ref?.channel_id || message.messageReference?.channelId || message.reference?.channelId || message.reference?.channel_id || channelId;
+    const referenceAuthor = message.referenced_message?.author?.id || message.referencedMessage?.author?.id ||
+      message.referencedMessage?.message?.author?.id ||
       (refId && env.reference(refChannel, refId)?.author?.id);
     const roles = message.mention_roles ?? message.mentionRoles;
     return {
@@ -99,7 +102,7 @@ export function createEngine(mode: Mode, env: Env) {
       roles: Array.isArray(roles) ? roles.slice(0, 100)
         : changed ? matchIds(content!, /<@&(\d+)>/g) : old?.roles ?? [],
       everyone: message.mention_everyone ?? message.mentionEveryone ?? (changed ? old?.everyone === true && /@(everyone|here)\b/.test(content!) : old?.everyone ?? false),
-      replyTo: ref === null || message.messageReference === null ? "" : referenceAuthor || old?.replyTo || "",
+      replyTo: ref === null || message.messageReference === null || message.reference === null ? "" : referenceAuthor || old?.replyTo || "",
       seenAt: Date.now(),
     };
   }

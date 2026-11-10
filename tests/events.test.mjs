@@ -44,3 +44,12 @@ test("GPL detects role and reply pings and ignores self and bots",()=>{
  e.observe({type:"MESSAGE_DELETE_BULK",channelId:"room",ids:["role","reply","bot","self","unknown"]});
  assert.deepEqual(rows.map(x=>x.before.id),["role","reply"]);
 });
+
+test("GPL recognizes a reply embedded in Discord's message record after its source is evicted",()=>{
+ const {engine,rows}=fixture("gpl");
+ engine.observe({type:"MESSAGE_CREATE",message:{...message,mentions:[],content:"reply",
+   referencedMessage:{message:{author:{id:"me"}}},reference:{messageId:"evicted"}}});
+ engine.observe(remove);
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].before.replyTo,"me");
+});
