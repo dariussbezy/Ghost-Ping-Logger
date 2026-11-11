@@ -3,7 +3,7 @@ import test from "node:test";
 import ts from "typescript";
 import fs from "node:fs";
 import vm from "node:vm";
-const target = new URL("../plugins/GPL/js/inline.ts",import.meta.url).pathname.slice(1);
+const target = new URL("../plugins/GPL/js/inline.ts",import.meta.url);
 const outputFiles = [{text:ts.transpileModule(fs.readFileSync(target,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText}];
 function fixture(){
  const module={exports:{}};
