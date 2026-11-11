@@ -5,7 +5,7 @@
   "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
   "author": "dariuss",
   "icon": "AtIcon",
-  "version": "1.0.8-beta",
+  "version": "1.0.9-beta",
   "dependencies": {
     "valenced.api": {
       "version": ">=1 <2"
@@ -13,6 +13,10 @@
     "discord": {}
   },
   "dist": {
-    "script": "index.js"
+    "script": "index.js",
+    "android": {
+      "path": "plugin.jar",
+      "class": "app.dariuss.logger.HistoryStyle"
+    }
   }
 }

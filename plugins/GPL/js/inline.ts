@@ -1,4 +1,5 @@
-import { processColor } from "react-native";
+import { Platform, processColor } from "react-native";
+import { callNativeMethodSync } from "@valenced/modules/native";
 import { Dispatcher } from "@valenced/discord/common/flux";
 import { Stores, onFluxEventDispatched } from "@valenced/discord/flux";
 import { getModules } from "@valenced/modules/finders";
@@ -21,6 +22,7 @@ export type InlineSettings = {
 
 type Location = { channelId: string; id: string; guildId?: string };
 type Participant = {
+  nativeStyle?: boolean;
   settings: () => InlineSettings;
   entries: () => readonly Entry[];
   report: (error: unknown) => void;
@@ -151,11 +153,16 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   while (runtime.rendered.size > 400) runtime.rendered.delete(runtime.rendered.keys().next().value!);
 
   const row = { ...original, message: { ...message } };
+  const nativeStyle = [...runtime.active.values()].some(participant => participant.nativeStyle);
   if (redraw) row.changeType = 2;
   function previousContent(entry: Entry): Content[] {
     const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
     const content = String(entry.before.original?.content ?? entry.before.content);
-    const historyText = content + " " + label;
+    const tint = nativeColor(colorValue(editSettings?.editedMessageColor, grey));
+    const color = typeof tint === "number" ? String(tint | 0) : "";
+    const historyText = nativeStyle
+      ? "\ue100" + color + ";" + content + "\ue101 \ue102" + color + ";" + label + "\ue103"
+      : content + " " + label;
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
@@ -164,7 +171,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
         if (Array.isArray(content)) return content;
       } catch { /* Older records fall back to their saved text. */ }
     }
-    return [node(content || "(No text)"), node(" " + label)];
+    return nativeStyle ? [node(historyText)] : [node(content || "(No text)"), node(" " + label)];
   }
   if (edits.length && editSettings && Array.isArray(message.content)) {
     row.message.content = [
@@ -373,6 +380,13 @@ export function installInline(
     remove: [], rendererFound: false, scheduled: false, refreshAll: false,
   };
   const participant: Participant = { settings, entries, report: onError };
+  if (Platform?.OS === "android") {
+    try {
+      participant.nativeStyle = callNativeMethodSync(
+        mode === "aml" ? "dariuss.advanced-message-logger.historyReady" : "dariuss.ghost-ping-logger.historyReady", [],
+      ) === true;
+    } catch { participant.nativeStyle = false; }
+  }
   runtime.active.set(mode, participant);
   if (runtime.active.size === 1 && !runtime.remove.length) {
     try { attach(runtime); } catch (error) { report(runtime, error); }
@@ -396,4 +410,10 @@ export function installInline(
       if (globals.__dariussInlineRuntimeV1 === runtime) delete globals.__dariussInlineRuntimeV1;
     },
   };
+}
+declare module "@valenced/modules/native" {
+  interface NativeMethods {
+    "dariuss.advanced-message-logger.historyReady": [[], boolean];
+    "dariuss.ghost-ping-logger.historyReady": [[], boolean];
+  }
 }
