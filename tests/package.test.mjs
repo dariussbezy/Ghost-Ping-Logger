@@ -9,10 +9,10 @@ test("the standalone beta catalog matches the compiled plugin and manifest", () 
   const read = path => fs.readFileSync(new URL(path, root));
   const config = JSON.parse(read("repo.config.json"));
   const id = Object.keys(config.channels)[0];
-  const dir = id.includes("ghost-ping") ? "plugins/GPL" : "plugins/GPL";
+  const dir = id.includes("ghost-ping") ? "plugins/GPL" : "plugins/AML";
   const manifest = JSON.parse(read(dir + "/manifest.json"));
   const item = JSON.parse(read("index.json")).plugins[id];
-  assert.equal(item.channels.beta, "1.0.9-beta");
+  assert.equal(item.channels.beta, "1.0.10-beta");
   assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["discord", "valenced.api"]);
   const filename = id + "@" + manifest.version + ".zip";
   const archive = read("pool/" + filename);
@@ -20,9 +20,6 @@ test("the standalone beta catalog matches the compiled plugin and manifest", () 
   assert.equal(entry.size, archive.length);
   assert.equal(entry.sha256, createHash("sha256").update(archive).digest("hex"));
   const files = unzipSync(archive);
-  const native = unzipSync(files[manifest.dist.android.path]);
-  assert.equal(Buffer.from(native["classes.dex"]).subarray(0,4).toString(),"dex\n");
-  assert.ok(Object.keys(native).every(path=>!path.endsWith(".class")));
   assert.deepEqual(JSON.parse(Buffer.from(files["manifest.json"])), manifest);
   assert.deepEqual(Buffer.from(files[manifest.dist.script]), read(dir + "/build/js/index.js"));
 });

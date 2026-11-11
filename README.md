@@ -10,7 +10,7 @@ Add the following URL in **Valenced → Plugins → Advanced**, then install **G
 https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/main/index.json
 ```
 
-Version **1.0.9-beta** requires Valenced Plugin API **1**.
+Version **1.0.10-beta** requires Valenced Plugin API **1**.
 
 ## What this beta includes
 
@@ -21,7 +21,5 @@ Version **1.0.9-beta** requires Valenced Plugin API **1**.
 
 Detection uses message and mention data received by this Discord client. Retaining a deleted row requires the original message in Discord's cache. Logs stay on this device.
 ## Development
-
-On Android, the included native module colors previous message versions and displays each edit label at 75% of the message text size. Other platforms keep plain inline history. Packaging requires a JDK and Android SDK through `JAVA_HOME` and `ANDROID_HOME`. Compile-only host declarations and the Xposed API are excluded from the plugin.
 
 Run `bun install --frozen-lockfile` and then `npm run publish:local` to build the ZIP and regenerate the index. Run `npm run lint:types` and `npm test` to check the build.

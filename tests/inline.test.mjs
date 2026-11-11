@@ -5,7 +5,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 const target = new URL("../plugins/GPL/js/inline.ts",import.meta.url).pathname.slice(1);
 const outputFiles = [{text:ts.transpileModule(fs.readFileSync(target,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText}];
-function fixture(nativeStyle=false){
+function fixture(){
  const module={exports:{}};
  const queue=[];
  const hooks=new Map();
@@ -26,8 +26,7 @@ function fixture(nativeStyle=false){
   }
  }
  const requires={
-  "react-native":{Platform:{OS:"android"},processColor:value=>parseInt(value.slice(1),16)},
-  "@valenced/modules/native":{callNativeMethodSync:()=>nativeStyle},
+  "react-native":{processColor:value=>parseInt(value.slice(1),16)},
   "@valenced/discord/common/flux":{Dispatcher:dispatcher},
   "@valenced/discord/flux":{Stores:{MessageStore:{getMessage:(_,id)=>store.get(id)}},onFluxEventDispatched(type,fn){
    let set=hooks.get(type);if(!set)hooks.set(type,set=new Set());set.add(fn);return()=>set.delete(fn);
@@ -112,17 +111,6 @@ test("rendering edit history keeps the native author instance",()=>{
  assert.equal(row.message.content[0].content,"Old formatted text (edited)");
  assert.equal(f.store.get("1").author,author);
  assert.equal(f.errors.length,0);
- plugin.stop();
-});
-test("Android styling scopes configured color and compact labels to each previous edit",()=>{
- const f=fixture(true);f.add("1","Latest");
- const first={...entry("1","edited"),at:100000,before:{...entry("1").before,content:"First"}};
- const second={...entry("1","edited"),at:200000,before:{...entry("1").before,content:"Second"}};
- const plugin=f.start("aml",{showEditTime:true,editedMessageColor:"#123456"},{current:[second,first]});
- const content=f.row("1").message.content;
- assert.match(content[0].content,/\ue1001193046;First\ue101 \ue1021193046;\(edited .+\)\ue103/);
- assert.match(content[2].content,/\ue1001193046;Second\ue101 \ue1021193046;\(edited .+\)\ue103/);
- assert.equal(content.at(-1).content,"Latest");
  plugin.stop();
 });
 test("every previous version has its own edit time and latest content stays last",()=>{

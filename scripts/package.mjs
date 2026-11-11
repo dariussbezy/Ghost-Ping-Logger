@@ -21,10 +21,7 @@ function run(...args) {
 run("build", "--plugins-dir", "plugins");
 const script = await readFile(source + "/build/js/" + basename(dist.script));
 await mkdir("pool", { recursive: true });
-const nativeBuild = spawnSync(process.execPath, ["scripts/native.mjs"], { stdio: "inherit" });
-if (nativeBuild.status !== 0) throw new Error("Native history styling build failed");
-const nativeJar = await readFile("build/native/plugin.jar");
-await writeFile("pool/" + filename, zipSync({ "manifest.json": manifest, [dist.script]: script, [dist.android.path]: nativeJar }, { level: 9 }));
+await writeFile("pool/" + filename, zipSync({ "manifest.json": manifest, [dist.script]: script }, { level: 9 }));
 const repository = code === "GPL" ? "Ghost-Ping-Logger" : "Adv.-Message-Logger";
 run("generate-index", "--dist", "pool", "--base-url",
   "https://raw.githubusercontent.com/dariussbezy/" + repository + "/refs/heads/main/pool",
