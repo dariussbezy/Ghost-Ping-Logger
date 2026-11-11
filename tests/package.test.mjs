@@ -12,7 +12,7 @@ test("the standalone beta catalog matches the compiled plugin and manifest", () 
   const dir = id.includes("ghost-ping") ? "plugins/GPL" : "plugins/AML";
   const manifest = JSON.parse(read(dir + "/manifest.json"));
   const item = JSON.parse(read("index.json")).plugins[id];
-  assert.equal(item.channels.beta, "1.0.4-beta");
+  assert.equal(item.channels.beta, "1.0.5-beta");
   assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["discord", "valenced.api"]);
   const filename = id + "@" + manifest.version + ".zip";
   const archive = read("pool/" + filename);

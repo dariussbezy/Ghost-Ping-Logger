@@ -14,6 +14,8 @@
     "@valenced/types": "git+https://github.com/Valenced/valenced-types.git#c67dd726d1ec28b38d8ac93862fdd3b6029b1d29"
   },
   "devDependencies": {
+    "react": "19.1.0",
+    "react-test-renderer": "19.1.0",
     "@biomejs/biome": "^2.5.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

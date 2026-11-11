@@ -4,10 +4,12 @@ import { Design } from "@valenced/discord/design";
 import { getModules } from "@valenced/modules/finders";
 import { withName } from "@valenced/modules/finders/filters";
 import { before, instead } from "@valenced/patcher";
-import { cloneElement, createElement, isValidElement, type ReactNode } from "react";
+import { cloneElement, createElement, isValidElement, useSyncExternalStore, type ReactNode } from "react";
 import type { Entry } from "./events";
 
 interface Callbacks {
+  subscribe?(listener: () => void): () => void;
+  version?(): unknown;
   mode?: "aml" | "gpl";
   nameFor?(id: string): string | undefined;
   isIgnored(id: string): boolean;
@@ -85,6 +87,8 @@ export function installMenus(callbacks: Callbacks): () => void {
       inspect: entries => owner()?.inspect(entries),
       remove: entries => owner()?.remove(entries),
       report: error => owner()?.report(error),
+      subscribe: listener => owner()?.subscribe?.(listener) ?? (() => {}),
+      version: () => owner()?.version?.() ?? null,
     });
     shared = { participants, stop };
     menuGlobal.__dariussLoggerMenusV1 = shared;
@@ -104,6 +108,8 @@ function attachMenus(callbacks: Callbacks): () => void {
   let active = true;
   const cleanups: (() => void)[] = [];
   const patchedModules = new WeakSet<object>();
+  const subscribe = (listener: () => void) => callbacks.subscribe?.(listener) ?? (() => {});
+  const version = () => callbacks.version?.() ?? null;
 
   function ignoreRow(id: string, scope: Scope): Row {
     const name = callbacks.nameFor?.(id) || "this " + scope;
@@ -187,6 +193,7 @@ function attachMenus(callbacks: Callbacks): () => void {
   function wrapSheet(sheet: Component, key: string, context: Context): Component {
     const connected = new WeakMap<Component, Component>();
     return function LoggerSheet(props) {
+      useSyncExternalStore(subscribe, version, version);
       const tree = sheet(props);
       if (!active) return tree;
       try {
@@ -194,11 +201,12 @@ function attachMenus(callbacks: Callbacks): () => void {
         const result = rows.length ? appendRows(tree, key, rows) : tree;
         if (result !== tree) return result;
         return rewrite(tree, node => {
-          if (typeof node.type !== "function" || nameOf(node.type) !== "ChannelLongPressActionSheetConnected") return;
+          if (typeof node.type !== "function" || !/(?:Channel|Guild|Server|PrivateChannel|DM).*Connected$/.test(nameOf(node.type) ?? "")) return;
           const Inner = node.type as Component;
           let Wrapped = connected.get(Inner);
           if (!Wrapped) {
             Wrapped = function LoggerConnectedSheet(innerProps) {
+              useSyncExternalStore(subscribe, version, version);
               const child = Inner(innerProps);
               if (!active) return child;
               try {
@@ -231,6 +239,7 @@ function attachMenus(callbacks: Callbacks): () => void {
     if (!active || typeof owner[key] !== "function" || patchedModules.has(owner)) return;
     try {
       const unpatch = instead(owner as RenderParent, key, function (args, original) {
+        useSyncExternalStore(subscribe, version, version);
         const tree = Reflect.apply(original, this, args);
         const props = args[0] as Context | undefined;
         const id = props?.user?.id ?? props?.profileUser?.id ?? props?.targetUser?.id ?? props?.userProfile?.user?.id ?? props?.userId;
@@ -258,10 +267,15 @@ function attachMenus(callbacks: Callbacks): () => void {
   function watchSheet(name: string, key: string) {
     return getModules(withName(name), namespace => {
       const mod = namespace as Module | undefined;
-      if (!active || !mod || typeof mod.default !== "function" || patchedModules.has(mod)) return;
+      const component = mod?.default;
+      if (!active || !mod || !component) return;
+      const nested = component as unknown as Record<string, unknown>;
+      const [owner, field] = typeof component === "function" ? [mod, "default"]
+        : typeof nested.render === "function" ? [nested, "render"] : [nested, "type"];
+      if (typeof owner[field] !== "function" || patchedModules.has(owner)) return;
       try {
         const wrappers = new WeakMap<Component, Component>();
-        cleanups.push(instead(mod as Required<Module>, "default", function ([props], original) {
+        cleanups.push(instead(owner as RenderParent, field, function ([props], original) {
           let wrapped = wrappers.get(original);
           if (!wrapped) {
             wrapped = wrapSheet(original, key, {});
@@ -269,7 +283,7 @@ function attachMenus(callbacks: Callbacks): () => void {
           }
           return wrapped(props);
         }));
-        patchedModules.add(mod);
+        patchedModules.add(owner);
       } catch (error) {
         callbacks.report(error);
       }
@@ -279,10 +293,10 @@ function attachMenus(callbacks: Callbacks): () => void {
   try {
     cleanups.push(before(ActionSheetActionCreators, "openLazy", args => {
       const [promise, key, context] = args;
-      if (!active || !promise || typeof promise.then !== "function" || typeof key !== "string" || !context) return args;
-      const ctx = context as Context;
+      if (!active || !promise || typeof promise.then !== "function" || typeof key !== "string") return args;
+      const ctx = (context ?? {}) as Context;
       try {
-        if (!resolveRows(key, ctx).length) return args;
+        if (!resolveRows(key, ctx).length && !/^(?:Guild|Server|Channel|PrivateChannel|DM).*ActionSheet$/i.test(key)) return args;
       } catch (error) {
         callbacks.report(error);
         return args;
@@ -299,6 +313,9 @@ function attachMenus(callbacks: Callbacks): () => void {
     cleanups.push(getModules(withName("UserProfileOverflowMenu"), patchProfile, { returnNamespace: true }));
     cleanups.push(watchSheet("LongPressMessageActionSheet", "MessageLongPressActionSheet"));
     cleanups.push(watchSheet("ChannelLongPressActionSheet", "ChannelLongPressActionSheet"));
+    cleanups.push(watchSheet("GuildActionSheet", "GuildActionSheet"));
+    cleanups.push(watchSheet("GuildLongPressActionSheet", "GuildLongPressActionSheet"));
+    cleanups.push(watchSheet("DMListLongPressActionSheet", "DMListLongPressActionSheet"));
   } catch (error) {
     callbacks.report(error);
   }

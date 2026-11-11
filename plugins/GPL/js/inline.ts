@@ -142,14 +142,21 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
 
   const row = { ...original, message: { ...message } };
   if (redraw) row.changeType = 2;
+  function previousContent(entry: Entry): Content[] {
+    // Keep Discord's UserRecord, tags and other native model instances intact.
+    if (args.message?.merge) {
+      try {
+        const record = args.message.merge({ content: entry.before.original?.content ?? entry.before.content });
+        const content = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
+        if (Array.isArray(content)) return content;
+      } catch { /* Older records fall back to their saved text. */ }
+    }
+    return [node(entry.before.content || "(No text)")];
+  }
   if (edits.length && amlSettings && Array.isArray(message.content)) {
     row.message.content = [
       ...edits.flatMap(entry => [
-        ...(entry.before.original ? generate({
-          ...args,
-          message: (args.message?.merge ? args.message.merge(entry.before.original)
-            : { ...args.message, ...entry.before.original }) as GenerateArgs["message"],
-        })?.message?.content ?? [node(entry.before.content || "(No text)")] : [node(entry.before.content || "(No text)")]),
+        ...previousContent(entry),
         node("\n"),
       ]),
       ...message.content,

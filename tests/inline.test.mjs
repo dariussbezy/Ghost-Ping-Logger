@@ -20,7 +20,10 @@ function fixture(){
   return Promise.resolve();
  }};
  class RowManager {
-  generate({message}) {return {type:1,message:{id:message.id,content:[{type:"text",content:message.content}]}};}
+  generate({message}) {
+   if (message.author) message.author.getTagProperties();
+   return {type:1,message:{id:message.id,content:[{type:"text",content:message.content}]}};
+  }
  }
  const requires={
   "react-native":{processColor:value=>parseInt(value.slice(1),16)},
@@ -51,7 +54,7 @@ test("channel history restores a deleted row once with both loggers active",asyn
  assert.equal(loaded.messages.length,1);
  assert.equal(loaded.messages[0].id,id);
  assert.equal(loaded.messages[0].content,"Deleted text");
- f.store.set(id,loaded.messages[0]);
+ f.store.set(id,{...loaded.messages[0],author:{...loaded.messages[0].author,getTagProperties:()=>({})}});
  assert.equal(f.row(id).message.textColor,0xed4245);
  aml.stop();gpl.stop();
 });
@@ -93,4 +96,20 @@ test("previous edits render above live text and are not duplicated on re-render"
  assert.equal(next.message.content.length,3);
  assert.equal(row.message.editedColor,0x123456);
  plugin.stop();assert.equal(f.row("1").message.content.length,1);
+});
+test("rendering edit history keeps the native author instance",()=>{
+ const f=fixture();
+ const author={getTagProperties:()=>({})};
+ class Record {
+  constructor(){this.id="1";this.channel_id="c";this.content="Latest";this.author=author;}
+  merge(patch){return Object.assign(new Record(),this,patch);}
+ }
+ f.store.set("1",new Record());
+ const old=entry("1","edited");old.before.original={content:"Old formatted text",author:{id:"u"}};
+ const plugin=f.start("aml",{}, {current:[old]});
+ const row=f.row("1");
+ assert.equal(row.message.content[0].content,"Old formatted text");
+ assert.equal(f.store.get("1").author,author);
+ assert.equal(f.errors.length,0);
+ plugin.stop();
 });

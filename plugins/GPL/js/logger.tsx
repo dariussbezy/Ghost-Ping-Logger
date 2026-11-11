@@ -354,12 +354,12 @@ export function defineLogger(mode: Mode) {
           <Design.TableRow label="Choose a color preset" subLabel="Your choice saves automatically." />
         </Design.TableRowGroup>
         <Design.TableRowGroup title="Color presets">
-          {([["Default", fallback], ...colorPresets] as const).map(([label, color]) =>
+          {(colorKey === "editedMessageColor" ? [["Default", fallback], ...colorPresets] as const : colorPresets).map(([label, color]) =>
             <Design.TableRow key={label} label={label} onPress={() => select(color)}
               trailing={<View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <ColorSwatch color={color} />
                 <View style={{ width: 20 }}>
-                  {current === color && (label === "Default" || color !== fallback) ? rowIcon("CircleCheckIcon") : null}
+                  {current === color && (colorKey !== "editedMessageColor" || label === "Default" || color !== fallback) ? rowIcon("CircleCheckIcon") : null}
                 </View>
               </View>} />)}
         </Design.TableRowGroup>
@@ -543,6 +543,8 @@ export function defineLogger(mode: Mode) {
       refreshInline = inline.refresh;
       const unmenu = installMenus({
         mode,
+        subscribe,
+        version: () => state,
         nameFor: value => ignoredTarget(value).name,
         isIgnored: value => ignoredIds().includes(value),
         toggleIgnored,

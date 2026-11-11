@@ -46,8 +46,8 @@ export type Snapshot = {
 export type Entry = { kind: "edited" | "deleted"; at: number; before: Snapshot; after?: string; test?: boolean };
 export const defaults = {
   logEdits: true, logDeletes: true, direct: true, roles: true, everyone: true,
-  replies: true, skipBots: true, skipSelf: true, alerts: true, persist: false,
-  ignoredIds: "", retentionDays: 7, rememberReceived: false,
+  replies: true, skipBots: true, skipSelf: true, alerts: true, persist: true,
+  ignoredIds: "", retentionDays: 7, rememberReceived: true,
   captureMode: "all" as "all" | "loaded", cacheLimit: 10000,
   notifyEdited: false, notifyDeleted: false,
   retainDeleted: true, showInlineEdits: true, colorDeletedUsername: true, redName: true,
