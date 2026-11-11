@@ -108,7 +108,7 @@ test("rendering edit history keeps the native author instance",()=>{
  const old=entry("1","edited");old.before.original={content:"Old formatted text",author:{id:"u"}};
  const plugin=f.start("aml",{}, {current:[old]});
  const row=f.row("1");
- assert.match(row.message.content[0].content,/> Old formatted text\n-# \(edited\)/);
+ assert.equal(row.message.content[0].content,"Old formatted text (edited)");
  assert.equal(f.store.get("1").author,author);
  assert.equal(f.errors.length,0);
  plugin.stop();

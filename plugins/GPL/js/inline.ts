@@ -155,7 +155,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   function previousContent(entry: Entry): Content[] {
     const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
     const content = String(entry.before.original?.content ?? entry.before.content);
-    const historyText = content.split("\n").map(line => "> " + line).join("\n") + "\n-# " + label;
+    const historyText = content + " " + label;
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
