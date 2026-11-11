@@ -13,6 +13,7 @@ import { installMenus } from "./menus";
 import type { Scope } from "./menus";
 import { defaultHistoryFilter, HistoryFilters, matchesHistory } from "./history-filters";
 import type { HistoryFilter, SavedHistoryFilter } from "./history-filters";
+import manifest from "../manifest.json";
 
 type Preferences = Settings & {
   savedFilters?: SavedHistoryFilter[];
@@ -477,6 +478,9 @@ export function defineLogger(mode: Mode) {
           <Design.TableRow label="Cache and history" subLabel="The cache holds received messages that may later change. History holds edits and deletions already detected. Each has its own restart setting and clear action. Messages never received by this device cannot be recovered." />
           <Design.TableRow label="Using both loggers" subLabel="AML and GPL share message capture and chat rendering. Each keeps its own filtered history. An event that qualifies for both produces one alert." />
         </Design.TableRowGroup>
+        <Design.Text color="text-muted" style={{ fontSize: 12, textAlign: "center", paddingVertical: 8 }}>
+          {name + " " + manifest.version}
+        </Design.Text>
       </>}
     </ScrollView>;
   }
