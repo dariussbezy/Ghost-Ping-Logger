@@ -71,3 +71,15 @@ test("reducing the cache limit keeps the most recent snapshots",()=>{
  assert.equal(e.snapshot().length,25);
  assert.equal(e.snapshot()[0].id,"16");
 });
+test("both loggers share the captured message object",()=>{
+ const aml=fixture("aml"),gpl=fixture("gpl");
+ const event={type:"MESSAGE_CREATE",message:{...message,id:"shared"}};
+ aml.engine.observe(event);gpl.engine.observe(event);
+ assert.equal(aml.engine.snapshot()[0],gpl.engine.snapshot()[0]);
+});
+test("a 50000 cache limit retains more than the former 1000 limit",()=>{
+ const e=createEngine("aml",{settings:()=>({...defaults,cacheLimit:50000}),me:()=>undefined,
+  channel:()=>undefined,reference:()=>undefined,record:()=>{},alert:()=>{}});
+ for(let i=0;i<1001;i++)e.observe({type:"MESSAGE_CREATE",message:{...message,id:String(i)}});
+ assert.equal(e.snapshot().length,1001);
+});

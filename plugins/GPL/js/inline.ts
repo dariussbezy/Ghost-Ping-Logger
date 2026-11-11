@@ -160,7 +160,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
 
   if (deleted) {
     const { entry, mode, settings } = deleted;
-    const tint = colorValue(mode === "aml" ? settings.deletedMessageColor : undefined, red);
+    const tint = colorValue(settings.deletedMessageColor, red);
     const processed = nativeColor(tint);
     if (processed !== undefined) {
       row.message.textColor = processed;
@@ -172,7 +172,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
       row.message.content = [...row.message.content, node("  · deleted " + time(entry.at, settings))];
     }
     if ((mode === "aml" ? settings.colorDeletedUsername : settings.redName) !== false) {
-      const nameColor = nativeColor(colorValue(mode === "aml" ? settings.deletedNameColor : undefined, red));
+      const nameColor = nativeColor(colorValue(settings.deletedNameColor, red));
       if (nameColor !== undefined) {
         row.message.usernameColor = nameColor;
         row.message.colorString = nameColor;
@@ -250,6 +250,50 @@ function keep(runtime: InlineRuntime, location: Location) {
 }
 
 function attach(runtime: InlineRuntime) {
+  type Loaded = Event & {
+    messages: { id: string }[];
+    hasMoreBefore?: boolean;
+    hasMoreAfter?: boolean;
+  };
+  for (const type of ["LOAD_MESSAGES_SUCCESS", "LOAD_MESSAGES_SUCCESS_CACHED"]) {
+    runtime.remove.push(onFluxEventDispatched<Loaded>(type, payload => {
+      if (!runtime.rendererFound || !payload.channelId || !Array.isArray(payload.messages)) return payload;
+      const ids = payload.messages.map(message => message.id).filter(id => /^\d+$/.test(id));
+      const sorted = ids.map(BigInt).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+      const present = new Set(ids);
+      const extra = [];
+      for (const participant of runtime.active.values()) {
+        for (const entry of participant.entries()) {
+          const before = entry.before;
+          if (entry.test || entry.kind !== "deleted" || before.channelId !== payload.channelId ||
+              present.has(before.id) || !/^\d+$/.test(before.id)) continue;
+          const key = keyOf(before.id, before.channelId);
+          if (!deletion(runtime, key)) continue;
+          const id = BigInt(before.id);
+          const inside = sorted.length ? id >= sorted[0] && id <= sorted[sorted.length - 1] : false;
+          const older = sorted.length && id < sorted[0] && payload.hasMoreBefore === false;
+          const newer = sorted.length && id > sorted[sorted.length - 1] && payload.hasMoreAfter === false;
+          const empty = !sorted.length && payload.hasMoreBefore === false && payload.hasMoreAfter === false;
+          if (!(inside || older || newer || empty)) continue;
+          present.add(before.id);
+          extra.push({
+            id: before.id, channel_id: before.channelId, guild_id: before.guildId || undefined,
+            author: { id: before.authorId, username: before.author, bot: before.bot },
+            content: before.content, timestamp: new Date(Number((id >> 22n) + 1420070400000n)).toISOString(),
+            state: "SENT", flags: 0, type: 0, attachments: [], embeds: [], reactions: [],
+            mentions: before.mentions.map(id => ({ id })), mention_roles: before.roles,
+            mention_everyone: before.everyone,
+          });
+          runtime.retained.set(key, { id: before.id, channelId: before.channelId, guildId: before.guildId });
+          runtime.changed.add(key);
+        }
+      }
+      if (!extra.length) return payload;
+      const messages = [...payload.messages, ...extra].sort((a, b) =>
+        /^\d+$/.test(a.id) && /^\d+$/.test(b.id) ? BigInt(a.id) > BigInt(b.id) ? -1 : BigInt(a.id) < BigInt(b.id) ? 1 : 0 : 0);
+      return { ...payload, messages };
+    }));
+  }
   const patched = new WeakSet<object>();
   runtime.remove.push(getModules(withName<{ prototype: RowGenerator }>("RowManager"), target => {
     const prototype = target.prototype;

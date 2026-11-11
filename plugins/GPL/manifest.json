@@ -5,7 +5,7 @@
   "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
   "author": "dariuss",
   "icon": "AtIcon",
-  "version": "1.0.1-beta",
+  "version": "1.0.2-beta",
   "dependencies": {
     "valenced.api": {
       "version": ">=1 <2"

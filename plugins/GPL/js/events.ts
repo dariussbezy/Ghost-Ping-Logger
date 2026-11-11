@@ -54,7 +54,7 @@ export const defaults = {
   showDeletedTime: false, showEditTime: false, use12HourClock: false,
 };
 export type Settings = typeof defaults;
-export const MaxSnapshotLimit = 1000;
+export const MaxSnapshotLimit = 50000;
 export const EntryLimit = 200;
 const TextLimit = 1600;
 const SnapshotAge = 24 * 60 * 60 * 1000;
@@ -75,6 +75,16 @@ const bridge = globalThis as typeof globalThis & { __dariussLoggerBridgeV1?: Coo
 export function cooperation() { return bridge.__dariussLoggerBridgeV1 ??= {}; }
 function matchIds(content: string, regex: RegExp) {
   return Array.from(content.matchAll(regex), match => match[1]).slice(0, 100);
+}
+const captureGlobals = globalThis as typeof globalThis & {
+  __dariussCapturedEventsV1?: WeakMap<Event, Map<string, Snapshot | undefined>>;
+};
+function captureOnce(event: Event, phase: string, capture: () => Snapshot | undefined) {
+  const events = captureGlobals.__dariussCapturedEventsV1 ??= new WeakMap();
+  let values = events.get(event);
+  if (!values) events.set(event, values = new Map());
+  if (!values.has(phase)) values.set(phase, capture());
+  return values.get(phase);
 }
 export function createEngine(mode: Mode, env: Env) {
   const recent = new Map<string, Snapshot>();
@@ -183,12 +193,12 @@ export function createEngine(mode: Mode, env: Env) {
     const channelId = event.channelId || message?.channel_id || message?.channelId;
     if (!channelId || (env.settings().captureMode === "loaded" && !env.loaded?.(channelId))) return;
     if (event.type === "MESSAGE_CREATE" && message) {
-      const captured = merge(message, channelId, event.guildId);
+      const captured = captureOnce(event, "create", () => merge(message, channelId, event.guildId));
       if (captured) remember(captured);
     } else if (event.type === "MESSAGE_UPDATE" && message?.id) {
       const before = known(event, channelId, message.id, other);
       if (before) keepBefore(event, before);
-      const after = merge(message, channelId, event.guildId, before);
+      const after = captureOnce(event, "update", () => merge(message, channelId, event.guildId, before));
       if (before && after && (mode === "gpl" || before.content !== after.content)) log("edited", before, event, after);
       if (after) remember(after);
     } else if (event.type === "MESSAGE_DELETE" || event.type === "MESSAGE_DELETE_BULK") {
