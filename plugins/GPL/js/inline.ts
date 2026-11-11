@@ -154,26 +154,22 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   if (redraw) row.changeType = 2;
   function previousContent(entry: Entry): Content[] {
     const content = String(entry.before.original?.content ?? entry.before.content);
+    const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
+    const lines = (content || "(No text)") + " " + label;
+    const markdown = lines.split("\n").map(line => "-# " + line).join("\n");
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
-        const record = args.message.merge({ content });
+        const record = args.message.merge({ content: markdown });
         const renderedContent = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
         if (Array.isArray(renderedContent)) return renderedContent;
       } catch { /* Older records fall back to their saved text. */ }
     }
-    return [node(content || "(No text)")];
+    return [{ type: "subtext", content: [node(lines)] }];
   }
   if (edits.length && editSettings && Array.isArray(message.content)) {
     row.message.content = [
-      ...edits.flatMap(entry => [
-        ...previousContent(entry),
-        // Discord's subtext node applies compact text and terminates its line.
-        // Insert the node directly: parsing "-#" would create a separate block.
-        { type: "subtext", content: [
-          node(" (edited" + (editSettings.showEditTime ? " " + time(entry.at, editSettings) : "") + ")"),
-        ] },
-      ]),
+      ...edits.flatMap(previousContent),
       ...message.content,
     ];
     const tint = colorValue(editSettings.editedMessageColor, grey);
