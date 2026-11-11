@@ -73,15 +73,15 @@ test("retains an existing deleted row, applies colors/timestamp and removes it w
  assert.equal(f.isInlineEvent(f.queue.at(-1)),true);
  plugin.stop();assert.equal(f.errors.length,0);
 });
-test("AML owns shared styling; GPL retains after AML stops; unknown bulk deletions still pass",async()=>{
+test("GPL owns ghost ping styling and AML owns ordinary deletions",async()=>{
  const f=fixture();f.add("1");f.add("2");
  const logs={current:[entry("1")]};
  const gpl=f.start("gpl",{redName:true},logs);
  const aml=f.start("aml",{colorDeletedUsername:false,deletedMessageColor:"#abcdef"},logs);
  await f.dispatcher.dispatch({type:"MESSAGE_DELETE_BULK",ids:["1","2"],channelId:"c"});
  assert.equal(f.store.has("2"),false);
- assert.equal(f.row("1").message.textColor,0xabcdef);
- assert.equal(f.row("1").message.usernameColor,undefined);
+ assert.equal(f.row("1").message.textColor,0xed4245);
+ assert.equal(f.row("1").message.usernameColor,0xed4245);
  aml.stop();
  assert.equal(f.row("1").message.usernameColor,0xed4245);
  gpl.stop();assert.equal(f.store.has("1"),false);assert.equal(f.errors.length,0);
@@ -91,9 +91,9 @@ test("previous edits render above live text and are not duplicated on re-render"
  const plugin=f.start("aml",{showEditTime:true,editedMessageColor:"#123456"},{current:[entry("1","edited")]});
  const row=f.row("1");const next=f.row("1");
  assert.equal(row.message.content[0].content,"Original");
- assert.match(row.message.edited,/edited/);
- assert.equal(row.message.content[2].content,"Latest");
- assert.equal(next.message.content.length,3);
+ assert.match(row.message.content[1].content,/edited/);
+ assert.equal(row.message.content[3].content,"Latest");
+ assert.equal(next.message.content.length,4);
  assert.equal(row.message.editedColor,0x123456);
  plugin.stop();assert.equal(f.row("1").message.content.length,1);
 });
@@ -108,8 +108,27 @@ test("rendering edit history keeps the native author instance",()=>{
  const old=entry("1","edited");old.before.original={content:"Old formatted text",author:{id:"u"}};
  const plugin=f.start("aml",{}, {current:[old]});
  const row=f.row("1");
- assert.equal(row.message.content[0].content,"Old formatted text");
+ assert.match(row.message.content[0].content,/> Old formatted text\n-# \(edited\)/);
  assert.equal(f.store.get("1").author,author);
  assert.equal(f.errors.length,0);
  plugin.stop();
+});
+test("every previous version has its own edit time and latest content stays last",()=>{
+ const f=fixture();f.add("1","Latest");
+ const first={...entry("1","edited"),at:100000,before:{...entry("1").before,content:"First"}};
+ const second={...entry("1","edited"),at:200000,before:{...entry("1").before,content:"Second"}};
+ const plugin=f.start("aml",{showEditTime:true},{current:[second,first]});
+ const content=f.row("1").message.content.map(node=>node.content);
+ assert.equal(content[0],"First");assert.equal(content[3],"Second");
+ assert.match(content[1],/edited .+/);assert.match(content[4],/edited .+/);
+ assert.equal(content.at(-1),"Latest");
+ plugin.stop();
+});
+test("ordinary deleted messages use AML colors with GPL also active",async()=>{
+ const f=fixture();f.add("1");
+ const aml=f.start("aml",{deletedMessageColor:"#abcdef"},{current:[entry("1")]});
+ const gpl=f.start("gpl",{deletedMessageColor:"#123456"},{current:[]});
+ await f.dispatcher.dispatch({type:"MESSAGE_DELETE",id:"1",channelId:"c"});
+ assert.equal(f.row("1").message.textColor,0xabcdef);
+ gpl.stop();aml.stop();
 });

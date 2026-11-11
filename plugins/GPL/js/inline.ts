@@ -93,7 +93,14 @@ function logs(participant: Participant | undefined, key: string): readonly Entry
 }
 
 function deletion(runtime: InlineRuntime, key: string) {
-  for (const mode of ["aml", "gpl"] as const) {
+  const ghost = runtime.active.get("gpl");
+  const ghostLogs = logs(ghost, key);
+  if (ghost && ghostLogs.length && ghost.settings().retainDeleted !== false) {
+    const entry = ghostLogs.find(item => item.kind === "deleted")
+      ?? logs(runtime.active.get("aml"), key).find(item => item.kind === "deleted");
+    if (entry) return { entry, mode: "gpl" as const, settings: ghost.settings() };
+  }
+  for (const mode of ["gpl", "aml"] as const) {
     const participant = runtime.active.get(mode);
     if (!participant) continue;
     const settings = participant.settings();
@@ -127,11 +134,14 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   const redraw = runtime.changed.delete(key);
   const deleted = runtime.retained.has(key) ? deletion(runtime, key) : undefined;
   const aml = runtime.active.get("aml");
-  const amlSettings = aml?.settings();
-  const edits = amlSettings && amlSettings.showInlineEdits !== false
-    ? logs(aml, key).filter(entry => entry.kind === "edited").slice(0, 5).reverse()
-    : [];
   const gpl = runtime.active.get("gpl");
+  const ghostPing = logs(gpl, key).length > 0;
+  const editOwner = ghostPing ? gpl : aml;
+  const editSettings = editOwner?.settings();
+  const edits = editSettings && editSettings.showInlineEdits !== false
+    ? logs(aml ?? editOwner, key).filter(entry => entry.kind === "edited")
+      .slice().sort((a, b) => a.at - b.at)
+    : [];
   const gplEdit = gpl?.settings().redName !== false && logs(gpl, key).some(entry => entry.kind === "edited");
   if (!deleted && !edits.length && !gplEdit) {
     runtime.rendered.delete(key);
@@ -143,17 +153,20 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   const row = { ...original, message: { ...message } };
   if (redraw) row.changeType = 2;
   function previousContent(entry: Entry): Content[] {
+    const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
+    const content = String(entry.before.original?.content ?? entry.before.content);
+    const historyText = content.split("\n").map(line => "> " + line).join("\n") + "\n-# " + label;
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
-        const record = args.message.merge({ content: entry.before.original?.content ?? entry.before.content });
+        const record = args.message.merge({ content: historyText });
         const content = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
         if (Array.isArray(content)) return content;
       } catch { /* Older records fall back to their saved text. */ }
     }
-    return [node(entry.before.content || "(No text)")];
+    return [node(content || "(No text)"), node(" " + label)];
   }
-  if (edits.length && amlSettings && Array.isArray(message.content)) {
+  if (edits.length && editSettings && Array.isArray(message.content)) {
     row.message.content = [
       ...edits.flatMap(entry => [
         ...previousContent(entry),
@@ -161,9 +174,8 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
       ]),
       ...message.content,
     ];
-    const tint = colorValue(amlSettings.editedMessageColor, grey);
+    const tint = colorValue(editSettings.editedMessageColor, grey);
     row.message.editedColor = nativeColor(tint);
-    if (amlSettings.showEditTime) row.message.edited = "edited " + time(edits[edits.length - 1].at, amlSettings);
     const backgroundColor = nativeColor(tint + "14");
     const gutterColor = nativeColor(tint + "80");
     if (!row.backgroundHighlight && backgroundColor !== undefined && gutterColor !== undefined) {
@@ -193,7 +205,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
       }
     }
   } else if (gplEdit) {
-    const nameColor = nativeColor(red);
+    const nameColor = nativeColor(colorValue(gpl?.settings().deletedNameColor, red));
     if (nameColor !== undefined) {
       row.message.usernameColor = nameColor;
       row.message.colorString = nameColor;

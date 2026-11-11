@@ -10,7 +10,7 @@ Add the following URL in **Valenced → Plugins → Advanced**, then install **G
 https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/main/index.json
 ```
 
-Version **1.0.5-beta** requires Valenced Plugin API **1**.
+Version **1.0.6-beta** requires Valenced Plugin API **1**.
 
 ## What this beta includes
 

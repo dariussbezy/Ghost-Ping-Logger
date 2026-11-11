@@ -455,8 +455,6 @@ export function defineLogger(mode: Mode) {
           <Design.TableRow label="Ignored users, DMs and channels" subLabel={ignoredIds().length + " exclusions · manage users, conversations and servers"}
             icon={rowIcon("EyeSlashIcon")} arrow onPress={() => setScreen("ignored")} />
         </Design.TableRowGroup>
-        <Design.TextInput label="Ignored IDs" description="Enter channel, server, or user IDs separated by spaces or commas."
-          value={settings.ignoredIds} onChange={ignoredIds => update({ ignoredIds })} />
         <Design.TableRowGroup title="Local storage">
           {toggle("persist", "Save history across restarts", "ClipboardListIcon", "Keep messages already logged as edited or deleted after restarting Discord.")}
           {toggle("rememberReceived", "Remember new messages", "ClockIcon", "Keep the cache of received messages after restarting, so later edits and deletions can be recognized.")}

@@ -3,7 +3,7 @@
   "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
   "channels": {
     "dariuss.ghost-ping-logger": {
-      "beta": "1.0.5-beta"
+      "beta": "1.0.6-beta"
     }
   }
 }
