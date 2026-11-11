@@ -8,16 +8,17 @@ import { cloneElement, createElement, isValidElement, type ReactNode } from "rea
 import type { Entry } from "./events";
 
 interface Callbacks {
+  mode?: "aml" | "gpl";
   nameFor?(id: string): string | undefined;
   isIgnored(id: string): boolean;
-  toggleIgnored(id: string): void;
+  toggleIgnored(id: string, scope?: Scope): void;
   entriesFor(channelId: string, messageId: string): readonly Entry[];
   inspect(entries: readonly Entry[]): void;
   remove(entries: readonly Entry[]): void;
   report(error: unknown): void;
 }
 
-type Scope = "user" | "server" | "channel" | "DM";
+export type Scope = "user" | "server" | "channel" | "DM";
 type Target = { id?: string; type?: number; guild_id?: string; guildId?: string };
 type Context = {
   channel?: Target | string;
@@ -68,7 +69,38 @@ function rewrite(root: ReactNode, visit: (node: React.ReactElement<Props>) => Re
   return walk(root);
 }
 
+const menuGlobal = globalThis as typeof globalThis & {
+  __dariussLoggerMenusV1?: { participants: Map<string, Callbacks>; stop: () => void };
+};
 export function installMenus(callbacks: Callbacks): () => void {
+  let shared = menuGlobal.__dariussLoggerMenusV1;
+  if (!shared) {
+    const participants = new Map<string, Callbacks>();
+    const owner = () => participants.get("aml") ?? participants.get("gpl")!;
+    const stop = attachMenus({
+      nameFor: id => owner()?.nameFor?.(id),
+      isIgnored: id => owner()?.isIgnored(id) ?? false,
+      toggleIgnored: (id, scope) => owner()?.toggleIgnored(id, scope),
+      entriesFor: (channel, message) => owner()?.entriesFor(channel, message) ?? [],
+      inspect: entries => owner()?.inspect(entries),
+      remove: entries => owner()?.remove(entries),
+      report: error => owner()?.report(error),
+    });
+    shared = { participants, stop };
+    menuGlobal.__dariussLoggerMenusV1 = shared;
+  }
+  const key = callbacks.mode ?? "aml";
+  shared.participants.set(key, callbacks);
+  return () => {
+    if (shared.participants.get(key) !== callbacks) return;
+    shared.participants.delete(key);
+    if (!shared.participants.size) {
+      shared.stop();
+      if (menuGlobal.__dariussLoggerMenusV1 === shared) delete menuGlobal.__dariussLoggerMenusV1;
+    }
+  };
+}
+function attachMenus(callbacks: Callbacks): () => void {
   let active = true;
   const cleanups: (() => void)[] = [];
   const patchedModules = new WeakSet<object>();
@@ -78,7 +110,7 @@ export function installMenus(callbacks: Callbacks): () => void {
     return {
       label: callbacks.isIgnored(id) ? `Stop ignoring ${name} in logger` : `Ignore ${name} in logger`,
       icon: "EyeSlashIcon",
-      action: () => callbacks.toggleIgnored(id),
+      action: () => callbacks.toggleIgnored(id, scope),
     };
   }
 
@@ -205,7 +237,8 @@ export function installMenus(callbacks: Callbacks): () => void {
         if (!active || !id) return tree;
         try {
           return rewrite(tree, node => {
-            if ((node.type !== Design.ContextMenu && nameOf(node.type) !== "ContextMenu") || !Array.isArray(node.props.items)) return;
+            // Profile menus can wrap the native ContextMenu in memo or connected components.
+            if (!Array.isArray(node.props.items)) return;
             const { label, action } = ignoreRow(id, "user");
             if (node.props.items.some(item => (item as { label?: string })?.label === label)) return node;
             return cloneElement(node, { items: [...node.props.items, { label, action }] });

@@ -9,7 +9,7 @@
       "author": "dariuss",
       "icon": "AtIcon",
       "channels": {
-        "beta": "1.0.3-beta"
+        "beta": "1.0.4-beta"
       },
       "versions": {
         "1.0.0-beta": {
@@ -51,6 +51,17 @@
           "url": "https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/refs/heads/main/pool/dariuss.ghost-ping-logger@1.0.3-beta.zip",
           "sha256": "45ae95de921ba2a85e31afd30e3ed900b856f33be5c616849703883eb6a8f5b4",
           "size": 13867,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {}
+          }
+        },
+        "1.0.4-beta": {
+          "url": "https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/refs/heads/main/pool/dariuss.ghost-ping-logger@1.0.4-beta.zip",
+          "sha256": "9d6f16fab48376b2166d41d51871c78f9ae3cb3c4a485e822c5f4957d6b16c1b",
+          "size": 14416,
           "dependencies": {
             "valenced.api": {
               "version": ">=1 <2"

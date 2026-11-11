@@ -10,10 +10,14 @@ import { cooperation, createEngine, defaults, EntryLimit, MaxSnapshotLimit } fro
 import type { Entry, Event, Message, Mode, Settings, Snapshot } from "./events";
 import { installInline, isInlineEvent } from "./inline";
 import { installMenus } from "./menus";
+import type { Scope } from "./menus";
 import { defaultHistoryFilter, HistoryFilters, matchesHistory } from "./history-filters";
 import type { HistoryFilter, SavedHistoryFilter } from "./history-filters";
 
-type Preferences = Settings & { savedFilters?: SavedHistoryFilter[] };
+type Preferences = Settings & {
+  savedFilters?: SavedHistoryFilter[];
+  ignoredTargets?: Record<string, { scope: Scope; name: string }>;
+};
 type Data = { settings: Preferences; entries: Entry[]; recent: Snapshot[] };
 type Storage = { set(data: Data, replace: boolean): Promise<unknown> };
 const actions = new Set<string>(["MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE", "MESSAGE_DELETE_BULK"]);
@@ -70,7 +74,7 @@ function rowIcon(name: string) {
 }
 
 const getStores = () => Stores as unknown as {
-  ChannelStore?: { getChannel(id: string): { guild_id?: string; guildId?: string; name?: string; type?: number } | undefined };
+  ChannelStore?: { getChannel(id: string): { guild_id?: string; guildId?: string; name?: string; type?: number; recipients?: string[] } | undefined };
   UserStore?: { getCurrentUser(): { id: string } | undefined; getUser?(id: string): { username?: string; globalName?: string; global_name?: string } | undefined };
   GuildMemberStore?: { getMember(guild: string, user: string): { roles?: string[] } | undefined };
   MessageStore?: {
@@ -224,9 +228,33 @@ export function defineLogger(mode: Mode) {
   function ignoredIds() {
     return [...new Set(state.settings.ignoredIds.split(/[\s,]+/).filter(Boolean))];
   }
-  function toggleIgnored(value: string) {
+  function ignoredTarget(value: string, requestedScope?: Scope) {
+    const saved = state.settings.ignoredTargets?.[value];
+    const channel = getChannel(value);
+    const guild = getStores().GuildStore?.getGuild(value);
+    const user = getStores().UserStore?.getUser?.(value);
+    const scope = requestedScope || saved?.scope || (channel ? channel.type === 1 || channel.type === 3 ? "DM" : "channel"
+      : guild ? "server" : user ? "user" : undefined);
+    const recipients = channel?.recipients?.map(id => {
+      const recipient = getStores().UserStore?.getUser?.(id);
+      return recipient?.globalName || recipient?.global_name || recipient?.username;
+    }).filter(Boolean).join(", ");
+    const name = scope === "DM" ? channel?.name || recipients : scope === "channel" ? channel?.name
+      : scope === "server" ? guild?.name : user?.globalName || user?.global_name || user?.username;
+    return { scope, name: name || saved?.name || value };
+  }
+  function toggleIgnored(value: string, scope?: Scope) {
     const ids = ignoredIds();
-    update({ ignoredIds: (ids.includes(value) ? ids.filter(id => id !== value) : [...ids, value]).join(", ") });
+    const ignoredTargets = { ...state.settings.ignoredTargets };
+    if (ids.includes(value)) delete ignoredTargets[value];
+    else {
+      const target = ignoredTarget(value, scope);
+      if (target.scope) ignoredTargets[value] = { scope: target.scope, name: target.name };
+    }
+    update({
+      ignoredIds: (ids.includes(value) ? ids.filter(id => id !== value) : [...ids, value]).join(", "),
+      ignoredTargets,
+    });
   }
 
   function jump(entry: Entry) {
@@ -356,15 +384,25 @@ export function defineLogger(mode: Mode) {
         </Design.TableRowGroup>
       </> : screen === "ignored" ? <>
         <Design.Button text="Back to settings" variant="secondary" onPress={() => setScreen("main")} />
-        <Design.TableRowGroup title="Ignored items">
-          {ignoredIds().length ? ignoredIds().map(value => {
-            const guild = getStores().GuildStore?.getGuild(value);
-            const channel = getChannel(value);
-            const user = getStores().UserStore?.getUser?.(value);
-            return <Design.TableRow key={value} label={guild?.name || channel?.name || user?.username || value}
-              subLabel={value + " · tap to stop ignoring"} onPress={() => toggleIgnored(value)} />;
-          }) : <Design.TableRow label="No ignored items" />}
+        <Design.TableRowGroup title="Logger exclusions">
+          <Design.TableRow label="Choose what stays out of the logger"
+            subLabel="Ignored users exclude their messages in every chat. Ignored DMs, channels and servers exclude messages from those places. Tap an item below to stop ignoring it." />
         </Design.TableRowGroup>
+        {([
+          ["user", "Ignored users"], ["DM", "Ignored DMs"],
+          ["channel", "Ignored channels"], ["server", "Ignored servers"], [undefined, "Other ignored IDs"],
+        ] as const).map(([scope, title]) => {
+          const targets = ignoredIds().map(value => ({ id: value, ...ignoredTarget(value) }))
+            .filter(target => target.scope === scope);
+          if (!scope && !targets.length) return null;
+          return <Design.TableRowGroup key={title} title={title + " · " + targets.length}>
+            {targets.length ? targets.map(target =>
+              <Design.TableRow key={target.id} label={target.name}
+                subLabel={target.id + " · tap to stop ignoring"} icon={rowIcon("EyeSlashIcon")}
+                onPress={() => toggleIgnored(target.id)} />)
+              : <Design.TableRow label="None ignored" />}
+          </Design.TableRowGroup>;
+        })}
       </> : <>
         <Design.TableRowGroup title="Journal">
           {ghost
@@ -414,7 +452,8 @@ export function defineLogger(mode: Mode) {
             trailing={<ColorSwatch color={settings[key]} />} arrow onPress={() => setColorKey(key)} />)}
         </Design.TableRowGroup>
         <Design.TableRowGroup title="Filters">
-          <Design.TableRow label="Ignored items" icon={rowIcon("EyeSlashIcon")} arrow onPress={() => setScreen("ignored")} />
+          <Design.TableRow label="Ignored users, DMs and channels" subLabel={ignoredIds().length + " exclusions · manage users, conversations and servers"}
+            icon={rowIcon("EyeSlashIcon")} arrow onPress={() => setScreen("ignored")} />
         </Design.TableRowGroup>
         <Design.TextInput label="Ignored IDs" description="Enter channel, server, or user IDs separated by spaces or commas."
           value={settings.ignoredIds} onChange={ignoredIds => update({ ignoredIds })} />
@@ -503,7 +542,8 @@ export function defineLogger(mode: Mode) {
       const inline = installInline(mode, () => state.settings, entriesForInline, error);
       refreshInline = inline.refresh;
       const unmenu = installMenus({
-        nameFor: value => getStores().UserStore?.getUser?.(value)?.username || getChannel(value)?.name || getStores().GuildStore?.getGuild(value)?.name,
+        mode,
+        nameFor: value => ignoredTarget(value).name,
         isIgnored: value => ignoredIds().includes(value),
         toggleIgnored,
         entriesFor: (channelId, messageId) => recentEntries(state.entries).filter(entry =>
