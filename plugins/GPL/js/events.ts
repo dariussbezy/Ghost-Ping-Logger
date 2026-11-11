@@ -28,6 +28,7 @@ export type Event = {
   guildId?: string;
 };
 export type Snapshot = {
+  original?: Record<string, unknown>;
   id: string;
   channelId: string;
   guildId: string;
@@ -47,7 +48,7 @@ export const defaults = {
   logEdits: true, logDeletes: true, direct: true, roles: true, everyone: true,
   replies: true, skipBots: true, skipSelf: true, alerts: true, persist: false,
   ignoredIds: "", retentionDays: 7, rememberReceived: false,
-  captureMode: "all" as "all" | "loaded", cacheLimit: 250,
+  captureMode: "all" as "all" | "loaded", cacheLimit: 10000,
   notifyEdited: false, notifyDeleted: false,
   retainDeleted: true, showInlineEdits: true, colorDeletedUsername: true, redName: true,
   deletedMessageColor: "#ED4245", editedMessageColor: "#A0A3AA", deletedNameColor: "#ED4245",
@@ -104,7 +105,17 @@ export function createEngine(mode: Mode, env: Env) {
       message.referencedMessage?.message?.author?.id ||
       (refId && env.reference(refChannel, refId)?.author?.id);
     const roles = message.mention_roles ?? message.mentionRoles;
+    const original = { ...old?.original };
+    const source = message as Message & Record<string, unknown>;
+    for (const field of ["id", "channel_id", "guild_id", "author", "content", "attachments", "embeds",
+      "mentions", "mention_roles", "mention_everyone", "message_reference", "referenced_message",
+      "timestamp", "edited_timestamp", "type", "flags", "sticker_items", "components"]) {
+      if (source[field] !== undefined) {
+        try { original[field] = JSON.parse(JSON.stringify(source[field])); } catch { /* Unsupported transient fields are omitted. */ }
+      }
+    }
     return {
+      original,
       id: message.id, channelId,
       guildId: message.guild_id || message.guildId || guildId || old?.guildId || env.channel(channelId)?.guild_id || env.channel(channelId)?.guildId || "",
       authorId: author?.id || old!.authorId,
@@ -199,7 +210,9 @@ export function createEngine(mode: Mode, env: Env) {
       const before = known(event, channelId, message.id, other);
       if (before) keepBefore(event, before);
       const after = captureOnce(event, "update", () => merge(message, channelId, event.guildId, before));
-      if (before && after && (mode === "gpl" || before.content !== after.content)) log("edited", before, event, after);
+      const attachmentsChanged = before && after &&
+        JSON.stringify(before.original?.attachments ?? []) !== JSON.stringify(after.original?.attachments ?? []);
+      if (before && after && (mode === "gpl" || before.content !== after.content || attachmentsChanged)) log("edited", before, event, after);
       if (after) remember(after);
     } else if (event.type === "MESSAGE_DELETE" || event.type === "MESSAGE_DELETE_BULK") {
       const ids = event.type === "MESSAGE_DELETE" ? [event.id] : event.ids ?? [];

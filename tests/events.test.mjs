@@ -77,6 +77,24 @@ test("both loggers share the captured message object",()=>{
  aml.engine.observe(event);gpl.engine.observe(event);
  assert.equal(aml.engine.snapshot()[0],gpl.engine.snapshot()[0]);
 });
+test("original attachments and author metadata survive capture and later mutation",()=>{
+ const f=fixture("aml");
+ const input={...message,author:{id:"sender",username:"Sender",avatar:"avatar-hash"},
+  attachments:[{id:"a",filename:"photo.png",url:"https://cdn.example/photo.png"}]};
+ f.engine.observe({type:"MESSAGE_CREATE",message:input});
+ input.attachments.length=0;
+ f.engine.observe({type:"MESSAGE_DELETE",id:"1",channelId:"room"});
+ assert.equal(f.rows[0].before.original.attachments[0].filename,"photo.png");
+ assert.equal(f.rows[0].before.original.author.avatar,"avatar-hash");
+});
+test("attachment removal is logged even if text is unchanged",()=>{
+ const f=fixture("aml");
+ f.engine.observe({type:"MESSAGE_CREATE",message:{...message,attachments:[{id:"a"}]}});
+ f.engine.observe({type:"MESSAGE_UPDATE",message:{id:"1",channel_id:"room",attachments:[]}});
+ assert.equal(f.rows.length,1);
+ assert.equal(f.rows[0].kind,"edited");
+ assert.equal(f.rows[0].before.original.attachments[0].id,"a");
+});
 test("a 50000 cache limit retains more than the former 1000 limit",()=>{
  const e=createEngine("aml",{settings:()=>({...defaults,cacheLimit:50000}),me:()=>undefined,
   channel:()=>undefined,reference:()=>undefined,record:()=>{},alert:()=>{}});

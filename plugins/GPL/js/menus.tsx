@@ -8,6 +8,7 @@ import { cloneElement, createElement, isValidElement, type ReactNode } from "rea
 import type { Entry } from "./events";
 
 interface Callbacks {
+  nameFor?(id: string): string | undefined;
   isIgnored(id: string): boolean;
   toggleIgnored(id: string): void;
   entriesFor(channelId: string, messageId: string): readonly Entry[];
@@ -28,6 +29,8 @@ type Context = {
   user?: Target;
   profileUser?: Target;
   userId?: string;
+  targetUser?: Target;
+  userProfile?: { user?: Target };
   message?: { id?: string; channel_id?: string; channelId?: string; author?: Target };
 };
 type Row = { label: string; icon: string; action(): void; destructive?: boolean };
@@ -71,8 +74,9 @@ export function installMenus(callbacks: Callbacks): () => void {
   const patchedModules = new WeakSet<object>();
 
   function ignoreRow(id: string, scope: Scope): Row {
+    const name = callbacks.nameFor?.(id) || "this " + scope;
     return {
-      label: callbacks.isIgnored(id) ? `Stop ignoring this ${scope} in logger` : `Ignore this ${scope} in logger`,
+      label: callbacks.isIgnored(id) ? `Stop ignoring ${name} in logger` : `Ignore ${name} in logger`,
       icon: "EyeSlashIcon",
       action: () => callbacks.toggleIgnored(id),
     };
@@ -98,6 +102,10 @@ export function installMenus(callbacks: Callbacks): () => void {
 
     if (/reaction|emoji|sticker|mute|notif|setting|permission|invite|share|report|forward/i.test(key)) return [];
     if (!/LongPress|ContextMenu|ActionSheet/i.test(key)) return [];
+    if (/user|profile/i.test(key)) {
+      const userId = ctx.user?.id ?? ctx.profileUser?.id ?? ctx.targetUser?.id ?? ctx.userProfile?.user?.id ?? ctx.userId;
+      return userId ? [ignoreRow(userId, "user")] : [];
+    }
     if (/channel|^dm|directmessage/i.test(key)) {
       const channelId = idOf(ctx.channel) ?? ctx.channelId ?? ctx.channel_id;
       const type = typeof ctx.channel === "object" ? ctx.channel.type : undefined;
@@ -193,12 +201,13 @@ export function installMenus(callbacks: Callbacks): () => void {
       const unpatch = instead(owner as RenderParent, key, function (args, original) {
         const tree = Reflect.apply(original, this, args);
         const props = args[0] as Context | undefined;
-        const id = props?.user?.id ?? props?.profileUser?.id ?? props?.userId;
+        const id = props?.user?.id ?? props?.profileUser?.id ?? props?.targetUser?.id ?? props?.userProfile?.user?.id ?? props?.userId;
         if (!active || !id) return tree;
         try {
           return rewrite(tree, node => {
             if ((node.type !== Design.ContextMenu && nameOf(node.type) !== "ContextMenu") || !Array.isArray(node.props.items)) return;
             const { label, action } = ignoreRow(id, "user");
+            if (node.props.items.some(item => (item as { label?: string })?.label === label)) return node;
             return cloneElement(node, { items: [...node.props.items, { label, action }] });
           });
         } catch (error) {

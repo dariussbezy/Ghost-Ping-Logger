@@ -46,10 +46,11 @@ type Row = {
     colorString?: number;
     usernameColor?: number;
     editedColor?: number;
+    edited?: string;
   };
   backgroundHighlight?: { backgroundColor: number; gutterColor: number };
 };
-type GenerateArgs = { rowType?: number; message?: { id?: string; channel_id?: string } };
+type GenerateArgs = { rowType?: number; message?: { id?: string; channel_id?: string; merge?: (value: unknown) => unknown } };
 type RowGenerator = { generate(args: GenerateArgs): Row | undefined };
 
 type InlineRuntime = {
@@ -116,7 +117,7 @@ function nativeColor(value: string): number | undefined {
   return typeof result === "number" ? result : undefined;
 }
 
-function styleRow(runtime: InlineRuntime, original: Row | undefined, args: GenerateArgs): Row | undefined {
+function styleRow(runtime: InlineRuntime, original: Row | undefined, args: GenerateArgs, generate: (args: GenerateArgs) => Row | undefined): Row | undefined {
   const rowType = original?.type ?? original?.rowType ?? args?.rowType;
   const message = original?.message;
   const channelId = args?.message?.channel_id;
@@ -144,13 +145,18 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   if (edits.length && amlSettings && Array.isArray(message.content)) {
     row.message.content = [
       ...edits.flatMap(entry => [
-        node(entry.before.content || "(No text)"),
-        node(amlSettings.showEditTime ? "  · edited " + time(entry.at, amlSettings) + "\n" : "\n"),
+        ...(entry.before.original ? generate({
+          ...args,
+          message: (args.message?.merge ? args.message.merge(entry.before.original)
+            : { ...args.message, ...entry.before.original }) as GenerateArgs["message"],
+        })?.message?.content ?? [node(entry.before.content || "(No text)")] : [node(entry.before.content || "(No text)")]),
+        node("\n"),
       ]),
       ...message.content,
     ];
     const tint = colorValue(amlSettings.editedMessageColor, grey);
     row.message.editedColor = nativeColor(tint);
+    if (amlSettings.showEditTime) row.message.edited = "edited " + time(edits[edits.length - 1].at, amlSettings);
     const backgroundColor = nativeColor(tint + "14");
     const gutterColor = nativeColor(tint + "80");
     if (!row.backgroundHighlight && backgroundColor !== undefined && gutterColor !== undefined) {
@@ -169,7 +175,8 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
       if (backgroundColor !== undefined) row.backgroundHighlight = { backgroundColor, gutterColor: processed };
     }
     if (settings.showDeletedTime && Array.isArray(row.message.content)) {
-      row.message.content = [...row.message.content, node("  · deleted " + time(entry.at, settings))];
+      row.message.edited = "deleted " + time(entry.at, settings);
+      row.message.editedColor = processed;
     }
     if ((mode === "aml" ? settings.colorDeletedUsername : settings.redName) !== false) {
       const nameColor = nativeColor(colorValue(settings.deletedNameColor, red));
@@ -277,10 +284,13 @@ function attach(runtime: InlineRuntime) {
           if (!(inside || older || newer || empty)) continue;
           present.add(before.id);
           extra.push({
+            ...before.original,
             id: before.id, channel_id: before.channelId, guild_id: before.guildId || undefined,
-            author: { id: before.authorId, username: before.author, bot: before.bot },
-            content: before.content, timestamp: new Date(Number((id >> 22n) + 1420070400000n)).toISOString(),
-            state: "SENT", flags: 0, type: 0, attachments: [], embeds: [], reactions: [],
+            author: before.original?.author ?? { id: before.authorId, username: before.author, bot: before.bot },
+            content: typeof before.original?.content === "string" ? before.original.content : before.content,
+            timestamp: before.original?.timestamp ?? new Date(Number((id >> 22n) + 1420070400000n)).toISOString(),
+            state: "SENT", flags: 0, type: 0,
+            attachments: before.original?.attachments ?? [], embeds: before.original?.embeds ?? [], reactions: [],
             mentions: before.mentions.map(id => ({ id })), mention_roles: before.roles,
             mention_everyone: before.everyone,
           });
@@ -301,7 +311,7 @@ function attach(runtime: InlineRuntime) {
     try {
       const unpatch = instead(prototype, "generate", function (args, original) {
         const row = original.apply(this, args);
-        try { return styleRow(runtime, row, args[0]); }
+        try { return styleRow(runtime, row, args[0], value => original.call(this, value)); }
         catch (error) { report(runtime, error); return row; }
       });
       patched.add(prototype);

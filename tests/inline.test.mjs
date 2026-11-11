@@ -64,7 +64,7 @@ test("retains an existing deleted row, applies colors/timestamp and removes it w
  assert.equal(row.changeType,2);
  assert.equal(row.message.textColor,0xabcdef);
  assert.equal(row.message.usernameColor,0xffeeff);
- assert.match(row.message.content.at(-1).content,/deleted/);
+ assert.match(row.message.edited,/deleted/);
  logs.current=[];plugin.refresh();await tick();
  assert.equal(f.store.has("1"),false);
  assert.equal(f.isInlineEvent(f.queue.at(-1)),true);
@@ -88,7 +88,7 @@ test("previous edits render above live text and are not duplicated on re-render"
  const plugin=f.start("aml",{showEditTime:true,editedMessageColor:"#123456"},{current:[entry("1","edited")]});
  const row=f.row("1");const next=f.row("1");
  assert.equal(row.message.content[0].content,"Original");
- assert.match(row.message.content[1].content,/edited/);
+ assert.match(row.message.edited,/edited/);
  assert.equal(row.message.content[2].content,"Latest");
  assert.equal(next.message.content.length,3);
  assert.equal(row.message.editedColor,0x123456);

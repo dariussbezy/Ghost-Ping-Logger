@@ -71,7 +71,7 @@ function rowIcon(name: string) {
 
 const getStores = () => Stores as unknown as {
   ChannelStore?: { getChannel(id: string): { guild_id?: string; guildId?: string; name?: string; type?: number } | undefined };
-  UserStore?: { getCurrentUser(): { id: string } | undefined; getUser?(id: string): { username?: string } | undefined };
+  UserStore?: { getCurrentUser(): { id: string } | undefined; getUser?(id: string): { username?: string; globalName?: string; global_name?: string } | undefined };
   GuildMemberStore?: { getMember(guild: string, user: string): { roles?: string[] } | undefined };
   MessageStore?: {
     getMessage(channel: string, id: string): Message | undefined;
@@ -258,7 +258,7 @@ export function defineLogger(mode: Mode) {
   }
   function showNotification(title: string, entry?: Entry, content?: string) {
     AlertActionCreators.openAlert(notificationKey, <Design.AlertModal title={title}
-      content={content ?? (entry?.before.content.slice(0, 400) || undefined)}
+      content={content ?? (entry ? readableMessage(entry).slice(0, 400) : undefined)}
       actions={<>
         {entry && !entry.test && <Design.AlertActionButton text={"Jump to message"} onPress={() => {
           AlertActionCreators.dismissAlert(notificationKey);
@@ -266,6 +266,14 @@ export function defineLogger(mode: Mode) {
         }} />}
         <Design.AlertActionButton text="Dismiss" variant="secondary" onPress={() => AlertActionCreators.dismissAlert(notificationKey)} />
       </>} />);
+  }
+  function readableMessage(entry: Entry) {
+    return entry.before.content.replace(/<@!?(\d+)>/g, (_match, userId: string) => {
+      const user = getStores().UserStore?.getUser?.(userId);
+      const mentions = entry.before.original?.mentions;
+      const saved = Array.isArray(mentions) ? mentions.find(item => item?.id === userId) : undefined;
+      return "@" + (user?.globalName || user?.global_name || saved?.global_name || user?.username || saved?.username || "Unknown user");
+    }).replace(/<#(\d+)>/g, (_match, channelId: string) => "#" + (getChannel(channelId)?.name || "unknown-channel"));
   }
   function testPing() {
     const entry: Entry = {
@@ -281,7 +289,7 @@ export function defineLogger(mode: Mode) {
   }
   function confirmClear(cache: boolean) {
     AlertActionCreators.openAlert(clearKey, <Design.AlertModal title={cache ? "Clear recent message cache?" : "Clear local history?"}
-      content={cache ? "This removes recent message snapshots from this device." : "This removes the journal from this device."}
+      content={cache ? "This removes cached messages from this device." : "This removes the journal from this device."}
       actions={<>
         <Design.AlertActionButton text="Clear" variant="destructive" onPress={() => { (cache ? clearCache : clearHistory)(); AlertActionCreators.dismissAlert(clearKey); }} />
         <Design.AlertActionButton text="Cancel" variant="secondary" onPress={() => AlertActionCreators.dismissAlert(clearKey)} />
@@ -376,14 +384,14 @@ export function defineLogger(mode: Mode) {
           {toggle("skipBots", "Skip bots", "RobotIcon")}
           {!ghost && toggle("skipSelf", "Skip my messages", "UserCircleIcon")}
           <Design.TableRow label="Test message capture" icon={rowIcon("WrenchIcon")} onPress={() =>
-            showNotification("Message capture", undefined, received + " new messages received this session · " + engine.snapshot().length + " recent snapshots.")} />
+            showNotification("Message capture", undefined, received + " new messages received this session · " + engine.snapshot().length + " cached messages.")} />
         </Design.TableRowGroup>
         <Design.TableRadioGroup title="Capture mode" value={settings.captureMode}
           onChange={value => update({ captureMode: value === "loaded" ? "loaded" : "all" })}>
           <Design.TableRadioRow label="All" value="all" subLabel="Watch all message events Discord receives." />
           <Design.TableRadioRow label="Loaded" value="loaded" subLabel="Watch the open chat and chats with loaded messages." />
         </Design.TableRadioGroup>
-        <SettingInput label="Maximum cached messages" description="25–50000 recent snapshots." value={String(settings.cacheLimit)}
+        <SettingInput label="Maximum cached messages" description="25–50000 messages. Default: 10000." value={String(settings.cacheLimit)}
           accept={value => { const count = Number(value); if (Number.isInteger(count) && count >= 25 && count <= MaxSnapshotLimit) { update({ cacheLimit: count }); return true; } return false; }} />
         <Design.TableRowGroup title="Alerts">
           {ghost ? <>
@@ -411,8 +419,8 @@ export function defineLogger(mode: Mode) {
         <Design.TextInput label="Ignored IDs" description="Enter channel, server, or user IDs separated by spaces or commas."
           value={settings.ignoredIds} onChange={ignoredIds => update({ ignoredIds })} />
         <Design.TableRowGroup title="Local storage">
-          {toggle("persist", "Save history across restarts", "ClipboardListIcon", "Store journal entries on this device.")}
-          {toggle("rememberReceived", "Remember new messages", "ClockIcon", "Store recent snapshots separately from the journal.")}
+          {toggle("persist", "Save history across restarts", "ClipboardListIcon", "Keep messages already logged as edited or deleted after restarting Discord.")}
+          {toggle("rememberReceived", "Remember new messages", "ClockIcon", "Keep the cache of received messages after restarting, so later edits and deletions can be recognized.")}
           <Design.TableRow label="Clear local history" icon={rowIcon("TrashIcon")} variant="danger" onPress={() => confirmClear(false)} />
           <Design.TableRow label="Clear recent message cache" icon={rowIcon("TrashIcon")} variant="danger" onPress={() => confirmClear(true)} />
         </Design.TableRowGroup>
@@ -426,6 +434,11 @@ export function defineLogger(mode: Mode) {
             ? "A ghost ping is a message that mentioned you and was later deleted or edited to remove the ping."
             : "Open the journal to see the previous text of edited or deleted messages."} />
           <Design.TableRow label="Privacy" subLabel="The journal uses messages this device received. Nothing is uploaded by this plugin." />
+          <Design.TableRow label="Review a message" subLabel="Open the journal, tap a message and choose Jump to message. Use search and date filters to narrow results, or save a filter to reuse it." />
+          <Design.TableRow label="Deleted messages in chat" subLabel="Keep deleted messages visible restores logged messages when you reopen their channel. Choose text and username colors under In chat. Time labels use Discord’s compact edited label." />
+          <Design.TableRow label="Ignore people and channels" subLabel="Long-press a message or open a profile menu to ignore its sender in the logger. Review and undo exclusions under Ignored items." />
+          <Design.TableRow label="Cache and history" subLabel="The cache holds received messages that may later change. History holds edits and deletions already detected. Each has its own restart setting and clear action. Messages never received by this device cannot be recovered." />
+          <Design.TableRow label="Using both loggers" subLabel="AML and GPL share message capture and chat rendering. Each keeps its own filtered history. An event that qualifies for both produces one alert." />
         </Design.TableRowGroup>
       </>}
     </ScrollView>;
@@ -450,7 +463,7 @@ export function defineLogger(mode: Mode) {
       if (typeof prefs.ignoredIds !== "string") prefs.ignoredIds = "";
       if (![0, 1, 7, 30].includes(prefs.retentionDays)) prefs.retentionDays = 7;
       if (prefs.captureMode !== "loaded") prefs.captureMode = "all";
-      if (!Number.isInteger(prefs.cacheLimit) || prefs.cacheLimit < 25 || prefs.cacheLimit > MaxSnapshotLimit) prefs.cacheLimit = 250;
+      if (!Number.isInteger(prefs.cacheLimit) || prefs.cacheLimit < 25 || prefs.cacheLimit > MaxSnapshotLimit) prefs.cacheLimit = 10000;
       if (!Array.isArray(prefs.savedFilters)) prefs.savedFilters = [];
       if (loaded?.settings?.rememberReceived === undefined && prefs.persist) prefs.rememberReceived = true;
       if (!ghost && loaded?.settings?.alerts && loaded?.settings?.notifyEdited === undefined) {
@@ -489,7 +502,8 @@ export function defineLogger(mode: Mode) {
       });
       const inline = installInline(mode, () => state.settings, entriesForInline, error);
       refreshInline = inline.refresh;
-      const unmenu = ghost ? () => {} : installMenus({
+      const unmenu = installMenus({
+        nameFor: value => getStores().UserStore?.getUser?.(value)?.username || getChannel(value)?.name || getStores().GuildStore?.getGuild(value)?.name,
         isIgnored: value => ignoredIds().includes(value),
         toggleIgnored,
         entriesFor: (channelId, messageId) => recentEntries(state.entries).filter(entry =>
