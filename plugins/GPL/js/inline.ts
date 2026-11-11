@@ -153,18 +153,16 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   const row = { ...original, message: { ...message } };
   if (redraw) row.changeType = 2;
   function previousContent(entry: Entry): Content[] {
-    const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
     const content = String(entry.before.original?.content ?? entry.before.content);
-    const historyText = content + " " + label;
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
-        const record = args.message.merge({ content: historyText });
+        const record = args.message.merge({ content });
         const content = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
         if (Array.isArray(content)) return content;
       } catch { /* Older records fall back to their saved text. */ }
     }
-    return [node(content || "(No text)"), node(" " + label)];
+    return [node(content || "(No text)")];
   }
   if (edits.length && editSettings && Array.isArray(message.content)) {
     row.message.content = [
@@ -176,6 +174,7 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
     ];
     const tint = colorValue(editSettings.editedMessageColor, grey);
     row.message.editedColor = nativeColor(tint);
+    if (editSettings.showEditTime) row.message.edited = "edited " + time(edits[edits.length - 1].at, editSettings);
     const backgroundColor = nativeColor(tint + "14");
     const gutterColor = nativeColor(tint + "80");
     if (!row.backgroundHighlight && backgroundColor !== undefined && gutterColor !== undefined) {

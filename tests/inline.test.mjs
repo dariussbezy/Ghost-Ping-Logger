@@ -91,9 +91,9 @@ test("previous edits render above live text and are not duplicated on re-render"
  const plugin=f.start("aml",{showEditTime:true,editedMessageColor:"#123456"},{current:[entry("1","edited")]});
  const row=f.row("1");const next=f.row("1");
  assert.equal(row.message.content[0].content,"Original");
- assert.match(row.message.content[1].content,/edited/);
- assert.equal(row.message.content[3].content,"Latest");
- assert.equal(next.message.content.length,4);
+ assert.match(row.message.edited,/edited/);
+ assert.equal(row.message.content[2].content,"Latest");
+ assert.equal(next.message.content.length,3);
  assert.equal(row.message.editedColor,0x123456);
  plugin.stop();assert.equal(f.row("1").message.content.length,1);
 });
@@ -108,19 +108,21 @@ test("rendering edit history keeps the native author instance",()=>{
  const old=entry("1","edited");old.before.original={content:"Old formatted text",author:{id:"u"}};
  const plugin=f.start("aml",{}, {current:[old]});
  const row=f.row("1");
- assert.equal(row.message.content[0].content,"Old formatted text (edited)");
+ assert.equal(row.message.content[0].content,"Old formatted text");
  assert.equal(f.store.get("1").author,author);
  assert.equal(f.errors.length,0);
  plugin.stop();
 });
-test("every previous version has its own edit time and latest content stays last",()=>{
+test("old versions stay compact and the latest edit time uses Discord's native label",()=>{
  const f=fixture();f.add("1","Latest");
  const first={...entry("1","edited"),at:100000,before:{...entry("1").before,content:"First"}};
  const second={...entry("1","edited"),at:200000,before:{...entry("1").before,content:"Second"}};
  const plugin=f.start("aml",{showEditTime:true},{current:[second,first]});
- const content=f.row("1").message.content.map(node=>node.content);
- assert.equal(content[0],"First");assert.equal(content[3],"Second");
- assert.match(content[1],/edited .+/);assert.match(content[4],/edited .+/);
+ const row=f.row("1");
+ const content=row.message.content.map(node=>node.content);
+ assert.equal(content[0],"First");assert.equal(content[2],"Second");
+ assert.equal(content.some(text=>text.includes("(edited")),false);
+ assert.match(row.message.edited,/edited .+/);
  assert.equal(content.at(-1),"Latest");
  plugin.stop();
 });
