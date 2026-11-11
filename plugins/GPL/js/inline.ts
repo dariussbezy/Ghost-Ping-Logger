@@ -158,8 +158,8 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
     if (args.message?.merge) {
       try {
         const record = args.message.merge({ content });
-        const content = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
-        if (Array.isArray(content)) return content;
+        const renderedContent = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
+        if (Array.isArray(renderedContent)) return renderedContent;
       } catch { /* Older records fall back to their saved text. */ }
     }
     return [node(content || "(No text)")];
@@ -168,7 +168,11 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
     row.message.content = [
       ...edits.flatMap(entry => [
         ...previousContent(entry),
-        node("\n"),
+        // Discord's subtext node applies compact text and terminates its line.
+        // Insert the node directly: parsing "-#" would create a separate block.
+        { type: "subtext", content: [
+          node(" (edited" + (editSettings.showEditTime ? " " + time(entry.at, editSettings) : "") + ")"),
+        ] },
       ]),
       ...message.content,
     ];

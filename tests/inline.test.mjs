@@ -91,7 +91,8 @@ test("previous edits render above live text and are not duplicated on re-render"
  const plugin=f.start("aml",{showEditTime:true,editedMessageColor:"#123456"},{current:[entry("1","edited")]});
  const row=f.row("1");const next=f.row("1");
  assert.equal(row.message.content[0].content,"Original");
- assert.match(row.message.edited,/edited/);
+ assert.equal(row.message.content[1].type,"subtext");
+ assert.match(row.message.content[1].content[0].content,/edited .+/);
  assert.equal(row.message.content[2].content,"Latest");
  assert.equal(next.message.content.length,3);
  assert.equal(row.message.editedColor,0x123456);
@@ -113,7 +114,7 @@ test("rendering edit history keeps the native author instance",()=>{
  assert.equal(f.errors.length,0);
  plugin.stop();
 });
-test("old versions stay compact and the latest edit time uses Discord's native label",()=>{
+test("each old version uses its own inline subtext label and the current message stays normal",()=>{
  const f=fixture();f.add("1","Latest");
  const first={...entry("1","edited"),at:100000,before:{...entry("1").before,content:"First"}};
  const second={...entry("1","edited"),at:200000,before:{...entry("1").before,content:"Second"}};
@@ -121,7 +122,10 @@ test("old versions stay compact and the latest edit time uses Discord's native l
  const row=f.row("1");
  const content=row.message.content.map(node=>node.content);
  assert.equal(content[0],"First");assert.equal(content[2],"Second");
- assert.equal(content.some(text=>text.includes("(edited")),false);
+ const labels=row.message.content.filter(node=>node.type==="subtext");
+ assert.equal(labels.length,2);
+ assert.match(labels[0].content[0].content,/\(edited .+\)/);
+ assert.match(labels[1].content[0].content,/\(edited .+\)/);
  assert.match(row.message.edited,/edited .+/);
  assert.equal(content.at(-1),"Latest");
  plugin.stop();
