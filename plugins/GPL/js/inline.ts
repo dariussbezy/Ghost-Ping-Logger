@@ -155,17 +155,19 @@ function styleRow(runtime: InlineRuntime, original: Row | undefined, args: Gener
   function previousContent(entry: Entry): Content[] {
     const content = String(entry.before.original?.content ?? entry.before.content);
     const label = "(edited" + (editSettings?.showEditTime ? " " + time(entry.at, editSettings) : "") + ")";
-    const lines = (content || "(No text)") + " " + label;
-    const markdown = lines.split("\n").map(line => "-# " + line).join("\n");
+    const text = content || "(No text)";
+    // Only the suffix uses Discord's -# node. Parsing the whole version as
+    // subtext shrinks the message body, including every line of a multiline edit.
+    const suffix: Content = { type: "subtext", content: [node(" " + label)] };
     // Keep Discord's UserRecord, tags and other native model instances intact.
     if (args.message?.merge) {
       try {
-        const record = args.message.merge({ content: markdown });
+        const record = args.message.merge({ content: text });
         const renderedContent = generate({ ...args, message: record as GenerateArgs["message"] })?.message?.content;
-        if (Array.isArray(renderedContent)) return renderedContent;
+        if (Array.isArray(renderedContent)) return [...renderedContent, suffix];
       } catch { /* Older records fall back to their saved text. */ }
     }
-    return [{ type: "subtext", content: [node(lines)] }];
+    return [node(text), suffix];
   }
   if (edits.length && editSettings && Array.isArray(message.content)) {
     row.message.content = [

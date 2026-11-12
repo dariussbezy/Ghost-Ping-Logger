@@ -14,8 +14,8 @@
       "versions": {
         "1.0.0-beta": {
           "url": "https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/refs/heads/main/pool/dariuss.ghost-ping-logger@1.0.0-beta.zip",
-          "sha256": "70fc327759c9f43778feca03c71453051b0610a18c63d0f4da7a58e781c8aedd",
-          "size": 14951,
+          "sha256": "72b3b3c697f058251f85e8c0df8ce386ce38a279f84376ac65542472a55a415e",
+          "size": 14940,
           "dependencies": {
             "valenced.api": {
               "version": ">=1 <2"
