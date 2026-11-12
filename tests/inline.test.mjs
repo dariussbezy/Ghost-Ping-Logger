@@ -38,7 +38,16 @@ function fixture(){
  const ctx=vm.createContext({module,exports:module.exports,require:n=>requires[n]});
  vm.runInContext(outputFiles[0].text,ctx);
  const errors=[];
- return { ...module.exports, add, store, queue, hooks, dispatcher, errors, row(id){return new RowManager().generate({message:store.get(id)});}, start(mode,options,logs){return module.exports.installInline(mode,()=>options,()=>logs.current,error=>errors.push(error));} };
+ return { ...module.exports, add, store, queue, hooks, dispatcher, errors,
+  seedLegacy(mode,options,logs){
+   const original=RowManager.prototype.generate;let removed=0;
+   RowManager.prototype.generate=function(args){const row=original.call(this,args);return {...row,message:{...row.message,content:[{type:"subtext",content:[{type:"text",content:"Legacy small message (edited)"}]}]}};};
+   const participant={settings:()=>options,entries:()=>logs.current,report:error=>errors.push(error)};
+   const runtime={active:new Map([[mode,participant]]),retained:new Map(),rendered:new Map(),changed:new Set(),remove:[()=>{removed++;RowManager.prototype.generate=original;}],rendererFound:true,scheduled:false,refreshAll:false};
+   ctx.__dariussInlineRuntimeV1=runtime;
+   return {runtime,removed:()=>removed};
+  },
+  row(id){return new RowManager().generate({message:store.get(id)});}, start(mode,options,logs){return module.exports.installInline(mode,()=>options,()=>logs.current,error=>errors.push(error));} };
 }
 function entry(id,kind="deleted"){
  return {kind,at:Date.now(),before:{id,channelId:"c",content:"Original"}};
@@ -154,4 +163,21 @@ test("multiline history keeps normal message text with one small label per versi
  assert.equal(content[1].type,"subtext");assert.equal(content[1].content[0].content," (edited)");
  assert.equal(content[2].type,"text");assert.equal(content[2].content,"Latest\nmessage");
  plugin.stop();assert.equal(f.errors.length,0);
+});
+
+for(const [legacyMode,newMode] of [["gpl","aml"],["aml","gpl"]])test(`updating ${newMode} replaces a legacy ${legacyMode} renderer without shrinking message text`,async()=>{
+ const f=fixture();f.add("1","Latest");const logs={current:[entry("1","edited")]};
+ const legacy=f.seedLegacy(legacyMode,{},logs);
+ legacy.runtime.rendered.set("c:1",{id:"1",channelId:"c"});
+ assert.equal(f.row("1").message.content[0].type,"subtext");
+ const plugin=f.start(newMode,{},logs);await tick();
+ const row=f.row("1"),content=row.message.content;
+ assert.equal(legacy.removed(),1);
+ assert.equal(row.changeType,2);
+ assert.equal(content[0].type,"text");assert.equal(content[0].content,"Original");
+ assert.equal(content[1].type,"subtext");assert.equal(content[1].content[0].content," (edited)");
+ assert.equal(content.at(-1).content,"Latest");
+ assert.equal(legacy.runtime.active.has(legacyMode),true);
+ legacy.runtime.active.delete(legacyMode);plugin.stop();assert.equal(f.errors.length,0);
+ assert.equal(Array.from(f.hooks.values()).every(set=>set.size===0),true);assert.equal(f.row("1").message.content.length,1);
 });

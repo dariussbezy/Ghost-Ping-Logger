@@ -17,6 +17,8 @@ test("the standalone beta catalog matches the compiled plugin and manifest", () 
   const filename = id + "@" + manifest.version + ".zip";
   const archive = read("pool/" + filename);
   const entry = item.versions[manifest.version];
+  assert.match(entry.url, /^https:\/\/raw\.githubusercontent\.com\/dariussbezy\/Ghost-Ping-Logger\/[0-9a-f]{40}\/pool\//,
+    "same-version GPL replacements must reference an immutable archive");
   assert.equal(entry.size, archive.length);
   assert.equal(entry.sha256, createHash("sha256").update(archive).digest("hex"));
   const files = unzipSync(archive);

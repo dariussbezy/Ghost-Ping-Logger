@@ -62,7 +62,9 @@ type InlineRuntime = {
   rendererFound: boolean;
   scheduled: boolean;
   refreshAll: boolean;
+  rendererRevision?: number;
 };
+const rendererRevision = 2;
 const globals = globalThis as typeof globalThis & { __dariussInlineRuntimeV1?: InlineRuntime };
 const keyOf = (id: string, channelId: string) => channelId + ":" + id;
 const isValidColor = (color: string | undefined): color is string => !!color && /^#[0-9a-f]{6}$/i.test(color);
@@ -369,14 +371,24 @@ export function installInline(
   entries: () => readonly Entry[],
   onError: (error: unknown) => void,
 ): { stop: () => void; refresh: () => void } {
-  const runtime = globals.__dariussInlineRuntimeV1 ??= {
+  const runtime: InlineRuntime = globals.__dariussInlineRuntimeV1 ??= {
     active: new Map(), retained: new Map(), rendered: new Map(), changed: new Set(),
     remove: [], rendererFound: false, scheduled: false, refreshAll: false,
   };
   const participant: Participant = { settings, entries, report: onError };
   runtime.active.set(mode, participant);
-  if (runtime.active.size === 1 && !runtime.remove.length) {
+  // AML/GPL share one hook. Updating the second plugin must replace a legacy
+  // first-owner closure, rather than leaving its old text formatting active.
+  if ((runtime.rendererRevision ?? 0) < rendererRevision) {
+    for (const remove of runtime.remove.splice(0).reverse()) {
+      try { remove(); } catch (error) { onError(error); }
+    }
+    runtime.rendererFound = false;
+    runtime.rendererRevision = rendererRevision;
+  }
+  if (!runtime.remove.length) {
     try { attach(runtime); } catch (error) { report(runtime, error); }
+    scheduleReconcile(runtime, true);
   }
   return {
     refresh() {
