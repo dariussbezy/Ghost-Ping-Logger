@@ -9,7 +9,6 @@
       "author": "dariussbezy <908767091522420817> (https://github.com/dariussbezy \"GitHub\")",
       "icon": "AtIcon",
       "channels": {
-        "beta": "2.1.0",
         "latest": "2.1.0"
       },
       "versions": {
