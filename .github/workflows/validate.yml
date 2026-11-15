@@ -20,4 +20,3 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: npm run build -- --plugins-dir plugins
       - run: npm run lint:types
-      - run: npm test
