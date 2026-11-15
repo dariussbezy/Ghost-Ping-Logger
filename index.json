@@ -1,15 +1,16 @@
 {
   "format": 1,
   "name": "Ghost Ping Logger",
-  "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
+  "description": "Find mentions and replies that were deleted or edited away and get alerted. Requires Adv. Message Logger.",
   "plugins": {
     "dariuss.ghost-ping-logger": {
       "name": "Ghost Ping Logger",
-      "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
-      "author": "dariuss",
+      "description": "Find mentions and replies that were deleted or edited away and get alerted. Requires Adv. Message Logger.",
+      "author": "dariussbezy <908767091522420817> (https://github.com/dariussbezy \"GitHub\")",
       "icon": "AtIcon",
       "channels": {
-        "beta": "1.0.1-beta"
+        "beta": "2.1.0",
+        "latest": "2.1.0"
       },
       "versions": {
         "1.0.0-beta": {
@@ -32,6 +33,20 @@
               "version": ">=1 <2"
             },
             "discord": {}
+          }
+        },
+        "2.1.0": {
+          "url": "https://raw.githubusercontent.com/dariussbezy/Ghost-Ping-Logger/main/pool/dariuss.ghost-ping-logger@2.1.0.zip",
+          "sha256": "b806ee3756dda9d6e246a284c9becd6b6e48e29ddc9ba3814c3e2a56aca46d10",
+          "size": 2817,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {},
+            "dariuss.advanced-message-logger": {
+              "version": ">=2 <3"
+            }
           }
         }
       }

@@ -1,18 +1,15 @@
 {
-  "format": 1,
-  "id": "dariuss.ghost-ping-logger",
-  "name": "Ghost Ping Logger",
-  "description": "Detect deleted or edited mentions and replies and review them in a local journal.",
-  "author": "dariuss",
-  "icon": "AtIcon",
-  "version": "1.0.1-beta",
-  "dependencies": {
-    "valenced.api": {
-      "version": ">=1 <2"
-    },
-    "discord": {}
-  },
-  "dist": {
-    "script": "index.js"
-  }
+	"format": 1,
+	"id": "dariuss.ghost-ping-logger",
+	"name": "Ghost Ping Logger",
+	"description": "Find mentions and replies that were deleted or edited away and get alerted. Requires Adv. Message Logger.",
+	"author": "dariussbezy <908767091522420817> (https://github.com/dariussbezy \"GitHub\")",
+	"icon": "AtIcon",
+	"version": "2.1.0",
+	"dependencies": {
+		"valenced.api": { "version": ">=1 <2" },
+		"discord": {},
+		"dariuss.advanced-message-logger": { "version": ">=2 <3" }
+	},
+	"dist": { "script": "index.js" }
 }
